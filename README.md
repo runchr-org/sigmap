@@ -12,7 +12,7 @@
 [![Zero deps](https://img.shields.io/badge/dependencies-zero-22c55e)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-7c6af7.svg)](LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/manojmallick/sigmap?style=flat&color=f59e0b&logo=github)](https://github.com/manojmallick/sigmap/stargazers)
-[![GitHub Stars Trend](https://img.shields.io/badge/dynamic/json?url=https://api.github.com/repos/manojmallick/sigmap&query=stargazers_count&suffix=%20stars&label=trend&color=f59e0b&logo=github&style=flat)](https://github.com/manojmallick/sigmap/stargazers)
+[![Star History Chart](https://api.star-history.com/svg?repos=manojmallick/sigmap&type=Date)](https://star-history.com/#manojmallick/sigmap&Date)
 [![Discover on ShyPD](https://img.shields.io/badge/ShyPD-Discover-7c6af7?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDE2IDE2Ij48Y2lyY2xlIGN4PSI4IiBjeT0iOCIgcj0iOCIgZmlsbD0id2hpdGUiLz48L3N2Zz4=&logoColor=7c6af7)](https://shypd.ai/tools/sigmap)
 
 </div>
