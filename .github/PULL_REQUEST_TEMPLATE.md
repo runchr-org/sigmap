@@ -71,3 +71,20 @@ Changelog line added:
 * [ ] I did not introduce unnecessary dependencies
 * [ ] I did not change benchmark claims without data
 * [ ] I preserved existing behavior unless documented
+
+## Labels (for maintainers)
+
+Please add one or more labels:
+
+| Category | Labels |
+|----------|--------|
+| **Type** | `bug` • `enhancement` • `documentation` |
+| **Status** | `good first issue` • `help wanted` |
+| **Area** | `parser` • `adapter` • `mcp` • `benchmark` • `watch-mode` • `opencode` • `local-llm` |
+| **Attention** | `needs-tests` • `needs-docs` |
+
+**Examples:**
+- Parser fix: `bug`, `parser`
+- New MCP feature: `enhancement`, `mcp`
+- Docs improvement: `documentation`
+- First-time contributor: `good first issue`, add relevant area label
