@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-description: SigMap version history and roadmap. From v0.0 to v6.10.6, with the latest releases implementing Python import detection, adding comprehensive diagnostics, and establishing develop-first branching strategy.
+description: SigMap version history and roadmap. From v0.0 to v6.10.7, with the latest releases implementing Python import detection, adding comprehensive diagnostics, and establishing develop-first branching strategy.
 head:
   - - meta
     - property: og:title
@@ -725,6 +725,16 @@ Fixed import graph analysis for Python monorepos (issues #181, #182): added dete
 **Tags:** `import graph` · `Python absolute imports` · `diagnostics tool` · `issue #181` · `issue #182` · `develop-first branching` · `MCP tools` · `regression tests`
 
 **Impact:** Fixes empty import graph for Python files with cross-package dependencies; enables explain_file and get_impact on large monorepos.
+
+**Benchmark:** 80.0% hit@5 · 96.8% token reduction · 52.2% task success (same metrics)
+
+---
+
+### v6.10.7 — Bundled Python import support ✓ (tagged v6.10.7 — 2026-05-12)
+
+Fixed Python absolute import detection in bundled gen-context.js. The source code already had support for `from package.module import X` patterns, but the bundle was missing this code block, causing MCP tools (`explain_file`, `get_impact`) to show empty import graphs for Python monorepos. Now bundled behavior matches source code exactly.
+
+**Tags:** `bundled fix` · `Python imports` · `MCP tools` · `import graph` · `bundle parity`
 
 **Benchmark:** 80.0% hit@5 · 96.8% token reduction · 52.2% task success (same metrics)
 
