@@ -1,13 +1,13 @@
 ---
 title: Benchmark overview
-description: Official v6.10.6 benchmark snapshot. 96.8% average token reduction, 80.0% retrieval hit@5, 41.0% fewer prompts, and 13/18 raw repos overflowing GPT-4o without SigMap.
+description: Official v6.10.7 benchmark snapshot. 96.8% average token reduction, 80.0% retrieval hit@5, 41.4% fewer prompts, and 13/18 raw repos overflowing GPT-4o without SigMap.
 head:
   - - meta
     - property: og:title
-      content: "SigMap benchmark overview — v6.10.1 snapshot"
+      content: "SigMap benchmark overview — v6.10.7 snapshot"
   - - meta
     - property: og:description
-      content: "One place for token, retrieval, quality, and task metrics from the latest saved v6.10.6 benchmark run."
+      content: "One place for token, retrieval, quality, and task metrics from the latest saved v6.10.7 benchmark run."
   - - meta
     - property: og:url
       content: "https://manojmallick.github.io/sigmap/guide/benchmark"
@@ -16,14 +16,14 @@ head:
 # Benchmark overview
 
 ::: info Official v6.10 benchmark snapshot
-**Benchmark ID:** sigmap-v6.10-main &nbsp;·&nbsp; **Date:** 2026-05-05
+**Benchmark ID:** sigmap-v6.10-main &nbsp;·&nbsp; **Date:** 2026-05-12
 
 | Metric | Value |
 |---|---:|
 | Hit@5 | **80.0%** vs 13.6% baseline |
 | Graph-boosted hit@5 | **80.0%** |
 | Retrieval lift | **5.9×** |
-| Prompt reduction | **41.0%** (2.84 → 1.68) |
+| Prompt reduction | **41.4%** (2.84 → 1.68) |
 | Task success proxy | **52.2%** |
 | Overall token reduction | **96.8%** |
 | GPT-4o overflow (without → with) | **13/18 → 0/18** |
@@ -40,7 +40,7 @@ This is the landing page for the public benchmark story. It answers four differe
 
 ## Official v6.10 snapshot
 
-Latest saved benchmark run: **2026-05-05 (v6.10.0)**
+Latest saved benchmark run: **2026-05-12 (v6.10.7)**
 
 | Metric | Result |
 |---|---:|

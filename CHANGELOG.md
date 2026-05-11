@@ -10,6 +10,14 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [6.10.7] — 2026-05-12
+
+### Fixed
+
+- **Python absolute imports in bundled gen-context.js** — Added Python absolute import detection (`from package.module import X`) to bundled extractImports function. The source code had this support but it was missing from the bundle, causing MCP tools to show empty import graphs for Python monorepos. Now matches source behavior correctly.
+
+---
+
 ## [6.10.6] — 2026-05-11
 
 ### Added

@@ -87,10 +87,10 @@ Ask → Rank → Context → Validate → Judge → Learn
 
 ```
 Benchmark : sigmap-v6.10-main
-Date      : 2026-05-05
+Date      : 2026-05-12
 
 Hit@5          : 80.0%   (baseline 13.6%  — 5.9× lift)
-Prompt reduction : 41.0%
+Prompt reduction : 41.4%
 Task success   : 52.2%   (baseline 10%)
 Prompts / task : 1.68    (baseline 2.84)
 Token reduction: 40–98%  (avg 96.8% across 18 real repos)
