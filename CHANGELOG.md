@@ -10,6 +10,14 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [6.10.5] — 2026-05-11
+
+### Added
+
+- **Branching strategy tests** — Added regression tests verifying the develop-first branching workflow to ensure all PRs target develop before release merges to main.
+
+---
+
 ## [6.10.4] — 2026-05-11
 
 ### Fixed
