@@ -421,6 +421,15 @@ No. CPU inference works fine for coding tasks (author uses M3 MacBook CPU). GPU 
 
 Use `ollama pull <model>` to download.
 
+### How do I measure my setup's effectiveness?
+
+Evaluate your SigMap context against real coding tasks:
+
+```bash
+sigmap validate --query "your question"
+```
+
+This shows whether SigMap ranked the right files in the top 10. For comprehensive evaluation with your local LLM setup, use the benchmark guides at [Local LLMs](/guide/local-llms).
 ### How do I benchmark my local setup?
 
 ```bash
