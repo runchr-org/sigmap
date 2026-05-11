@@ -729,6 +729,84 @@ __factories["./src/extractors/go"] = function(module, exports) {
   
 };
 
+// ── ./src/extractors/gdscript ──
+__factories["./src/extractors/gdscript"] = function(module, exports) {
+
+  /**
+   * Extract signatures from Godot GDScript source code.
+   * @param {string} src - Raw file content
+   * @returns {string[]} Array of signature strings
+   */
+
+  function extract(src) {
+    if (!src || typeof src !== 'string') return [];
+    const sigs = [];
+
+    const stripped = src.replace(/#.*$/gm, '');
+
+    let className = null;
+    let baseName = null;
+    const addedClasses = new Set();
+
+    const cm = stripped.match(/^class_name\s+(\w+)(?:\s+extends\s+([\w.]+))?/m);
+    if (cm) {
+      className = cm[1];
+      if (cm[2]) baseName = cm[2];
+    }
+    if (!baseName) {
+      const em = stripped.match(/^extends\s+([\w."/]+)/m);
+      if (em) baseName = em[1];
+    }
+
+    if (className) {
+      sigs.push(baseName ? `class ${className}(${baseName})` : `class ${className}`);
+      addedClasses.add(className);
+    } else if (baseName) {
+      sigs.push(`extends ${baseName}`);
+    }
+
+    const indent = (className || baseName) ? '  ' : '';
+
+    for (const m of stripped.matchAll(/^signal\s+(\w+)(?:\s*\(([^)]*)\))?/gm)) {
+      sigs.push(`${indent}signal ${m[1]}(${normalizeParams(m[2] || '')})`);
+    }
+
+    for (const m of stripped.matchAll(/^enum\s+(\w+)\s*\{([^}]*)\}/gm)) {
+      const members = m[2]
+        .split(',')
+        .map((s) => s.trim().split(/\s*=/)[0].trim())
+        .filter(Boolean);
+      sigs.push(`${indent}enum ${m[1]} { ${members.slice(0, 6).join(', ')} }`);
+    }
+
+    let constCount = 0;
+    for (const m of stripped.matchAll(/^(?:const|var)\s+([A-Z_]\w*)\s*(?::\s*\w+)?\s*=/gm)) {
+      if (constCount++ > 15) break;
+      sigs.push(`${indent}const ${m[1]}`);
+    }
+
+    for (const m of stripped.matchAll(/^(?:static\s+)?func\s+(_\w+|\w+)\s*\(([^)]*)\)(?:\s*->\s*(\w+))?/gm)) {
+      if (m[1].startsWith('_')) continue;
+      const retStr = m[3] ? ` → ${m[3]}` : '';
+      sigs.push(`${indent}func ${m[1]}(${normalizeParams(m[2])})${retStr}`);
+      if (sigs.length > 30) break;
+    }
+
+    return sigs;
+  }
+
+  function normalizeParams(raw) {
+    if (!raw) return '';
+    return raw
+      .split(',')
+      .map((p) => p.trim())
+      .join(', ');
+  }
+
+  module.exports = { extract };
+
+};
+
 // ── ./src/extractors/html ──
 __factories["./src/extractors/html"] = function(module, exports) {
   
