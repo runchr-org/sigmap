@@ -8,6 +8,17 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ## [Unreleased]
 
+### Added
+
+- **First-class R support** — R was already in the language detector and had an extractor, but several gaps stopped it from being usable end-to-end:
+  - Registered `.r`/`.R` in `gen-context.js` `EXT_MAP` so the main pipeline actually invokes the R extractor (previously wired into the eval/analyzer path only).
+  - Extended the dependency-graph builder (`src/graph/builder.js`) with an R branch: parses `source("path/file.R")` calls and, for R packages, resolves `localPkg::fn` references to the file that defines `fn` via a one-pass symbol scan over `R/`. `buildFromCwd` defaults now include `R/` and `inst/` dirs and Shiny entry files (`app.R`, `server.R`, `ui.R`, `global.R`).
+  - Extended the R extractor (`src/extractors/r.js`) with R6 class detection (`Name <- R6Class("Name", public = list(...))`), S7 class detection (`Name <- new_class("Name", ...)` + `method(generic, Name) <- function(...)`), and roxygen2 docstring hints appended to function/class sigs (mirroring the Python extractor's docstring pattern).
+  - New `src/discovery/r-manifest.js` module with zero-dep parsers for `DESCRIPTION` (Debian-control format, handles continuation lines and version constraints) and `NAMESPACE` (`export`, `exportPattern`, `exportMethods`, `S3method`, `importFrom`).
+  - Added `extractRDeps` to `src/extractors/deps.js` for the dep-map section, recognising `library()`/`require()`/`requireNamespace("…")` and `pkg::fn`, skipping R base packages.
+  - Extended the ranker's hub heuristic to recognise `R/utils.R`, `R/zzz.R`, `R/globals.R` and `*.r/*.R` files in the common hub-name set.
+  - Test fixture `test/fixtures/r-package/` (DESCRIPTION + NAMESPACE + `R/`) and 8 new tests in `test/r-language.test.js` cover manifest parsing, `source()` edge emission, namespace-aware resolution, and hub detection. Existing `test/fixtures/r.r` extended with R6/S7/richer roxygen2.
+
 ---
 
 ## [6.10.9] — 2026-05-12
