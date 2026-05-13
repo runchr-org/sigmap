@@ -24,6 +24,10 @@ export default defineConfig({
       {
         text: 'GitHub',
         link: 'https://github.com/manojmallick/sigmap',
+        badge: {
+          text: '⭐',
+          type: 'tip'
+        }
       },
     ],
 
