@@ -29,9 +29,12 @@ jobs:
           git fetch origin main develop
           git checkout develop
           git merge --no-edit origin/main
-          if git diff --exit-code origin/develop HEAD > /dev/null; then
-            echo "develop is already up to date"
+
+          # Check if there are changes to push
+          if ! git diff --exit-code origin/develop HEAD > /dev/null 2>&1; then
+            echo "Changes detected. Pushing develop..."
+            git push origin develop --force-with-lease
+            echo "✅ Successfully synced develop with main"
           else
-            git push origin develop
+            echo "✓ develop is already up to date with main"
           fi
-        continue-on-error: true
