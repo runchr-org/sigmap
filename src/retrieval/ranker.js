@@ -361,6 +361,58 @@ function _parseContextFile(contextPath) {
   return index;
 }
 
+/** Merge source index into target; prefer non-empty sig lists. */
+function _mergeSigIndex(target, source) {
+  for (const [file, sigs] of source.entries()) {
+    if (!sigs || sigs.length === 0) continue;
+    if (!target.has(file) || target.get(file).length < sigs.length) {
+      target.set(file, sigs);
+    }
+  }
+  return target;
+}
+
+/**
+ * Load signatures from .sigmap-cache.json (absolute paths → repo-relative keys).
+ * @param {string} cwd
+ * @returns {Map<string, string[]>}
+ */
+function _buildSigIndexFromCache(cwd) {
+  const fs = require('fs');
+  const path = require('path');
+  const index = new Map();
+  try {
+    const { loadCache } = require('../cache/sig-cache');
+    const pkgPath = path.join(cwd, 'package.json');
+    let version = '0.0.0';
+    if (fs.existsSync(pkgPath)) {
+      version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version || version;
+    }
+    const cache = loadCache(cwd, version);
+    for (const [absPath, entry] of cache.entries()) {
+      if (!entry || !entry.sigs || entry.sigs.length === 0) continue;
+      const rel = path.relative(cwd, absPath).replace(/\\/g, '/');
+      if (!rel || rel.startsWith('..')) continue;
+      index.set(rel, entry.sigs);
+    }
+  } catch (_) {}
+  return index;
+}
+
+/**
+ * Hot-cold and per-module strategies store most signatures outside the primary
+ * copilot-instructions.md file. MCP tools must merge all sources.
+ * @param {string} cwd
+ * @returns {Map<string, string[]>}
+ */
+function _enrichSigIndexFromStrategy(cwd, index) {
+  const path = require('path');
+  const coldPath = path.join(cwd, '.github', 'context-cold.md');
+  _mergeSigIndex(index, _parseContextFile(coldPath));
+  _mergeSigIndex(index, _buildSigIndexFromCache(cwd));
+  return index;
+}
+
 /**
  * Build a signature index from the generated context file.
  * Returns Map<filePath, string[]> where filePath is the relative path
@@ -382,7 +434,8 @@ function buildSigIndex(cwd, opts) {
 
   // 1. Caller supplied an explicit path — use it directly.
   if (opts && opts.contextPath) {
-    return _parseContextFile(opts.contextPath);
+    const index = _parseContextFile(opts.contextPath);
+    return _enrichSigIndexFromStrategy(cwd, index);
   }
 
   // 2. Check gen-context.config.json for a persisted customOutput path.
@@ -393,7 +446,7 @@ function buildSigIndex(cwd, opts) {
       if (cfg.customOutput) {
         const customPath = path.resolve(cwd, cfg.customOutput);
         const index = _parseContextFile(customPath);
-        if (index.size > 0) return index;
+        if (index.size > 0) return _enrichSigIndexFromStrategy(cwd, index);
       }
     }
   } catch (_) {}
@@ -402,10 +455,12 @@ function buildSigIndex(cwd, opts) {
   for (const parts of ADAPTER_OUTPUT_PATHS) {
     const contextPath = path.join(cwd, ...parts);
     const index = _parseContextFile(contextPath);
-    if (index.size > 0) return index;
+    if (index.size > 0) return _enrichSigIndexFromStrategy(cwd, index);
   }
 
-  return new Map();
+  // 4. Primary file empty/missing (hot-cold) — still serve cold + cache.
+  const fallback = new Map();
+  return _enrichSigIndexFromStrategy(cwd, fallback);
 }
 
 /**

@@ -213,6 +213,32 @@ test('hot-cold: falls back to full-equivalent when outside git repo', () => {
   assert.ok(fs.existsSync(primary), 'Primary output must still be written without git');
 });
 
+test('hot-cold: MCP buildSigIndex includes cold file and cache (issue #201)', () => {
+  const dir = makeTmpRepo('hot-cold-mcp');
+
+  writeFile(dir, 'src/cold.js', 'function coldOnlyFn() {}');
+  commit(dir, 'cold');
+
+  writeFile(dir, 'src/hot.js', 'function hotOnlyFn() {}');
+  commit(dir, 'hot');
+
+  writeConfig(dir, { strategy: 'hot-cold', hotCommits: 1, srcDirs: ['src'], sigCache: true });
+  runGenContext(dir);
+
+  const { buildSigIndex } = require('../../src/retrieval/ranker');
+  const { listModules, searchSignatures } = require('../../src/mcp/handlers');
+
+  const index = buildSigIndex(dir);
+  assert.ok(index.has('src/cold.js'), 'index must include cold-file signatures');
+  assert.ok(index.get('src/cold.js').some((s) => s.includes('coldOnlyFn')), 'cold sig text present');
+
+  const listed = listModules({}, dir);
+  assert.ok(!listed.includes('No modules found'), 'list_modules must see cold files');
+
+  const found = searchSignatures({ query: 'coldOnlyFn' }, dir);
+  assert.ok(found.includes('coldOnlyFn'), 'search_signatures must find cold symbols');
+});
+
 // ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------

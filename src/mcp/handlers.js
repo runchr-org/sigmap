@@ -5,6 +5,16 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const CONTEXT_FILE = path.join('.github', 'copilot-instructions.md');
+const CONTEXT_COLD_FILE = path.join('.github', 'context-cold.md');
+
+function _readContextFiles(cwd) {
+  const paths = [path.join(cwd, CONTEXT_FILE), path.join(cwd, CONTEXT_COLD_FILE)];
+  const chunks = [];
+  for (const p of paths) {
+    if (fs.existsSync(p)) chunks.push(fs.readFileSync(p, 'utf8'));
+  }
+  return chunks.join('\n');
+}
 
 // Section header keywords in PROJECT_MAP.md
 const MAP_SECTIONS = {
@@ -20,12 +30,10 @@ const MAP_SECTIONS = {
  * contain the given module substring.
  */
 function readContext(args, cwd) {
-  const contextPath = path.join(cwd, CONTEXT_FILE);
-  if (!fs.existsSync(contextPath)) {
+  const content = _readContextFiles(cwd);
+  if (!content) {
     return 'No context file found. Run: node gen-context.js';
   }
-
-  const content = fs.readFileSync(contextPath, 'utf8');
 
   if (!args || !args.module) return content;
 
@@ -62,41 +70,28 @@ function readContext(args, cwd) {
 function searchSignatures(args, cwd) {
   if (!args || !args.query) return 'Missing required argument: query';
 
-  const contextPath = path.join(cwd, CONTEXT_FILE);
-  if (!fs.existsSync(contextPath)) {
-    return 'No context file found. Run: node gen-context.js';
-  }
-
-  const content = fs.readFileSync(contextPath, 'utf8');
   const query = args.query.toLowerCase();
-  const lines = content.split('\n');
+  try {
+    const { buildSigIndex } = require('../retrieval/ranker');
+    const index = buildSigIndex(cwd);
+    if (index.size === 0) {
+      return 'No context file found. Run: node gen-context.js';
+    }
 
-  const result = [];
-  let currentFile = '';
-  let fileHeaderAdded = false;
+    const result = [];
+    for (const [file, sigs] of index.entries()) {
+      const hits = sigs.filter((s) => s.toLowerCase().includes(query));
+      if (hits.length === 0) continue;
+      if (result.length > 0) result.push('');
+      result.push(`### ${file}`);
+      result.push(...hits);
+    }
 
-  for (const line of lines) {
-    if (line.startsWith('### ')) {
-      currentFile = line.slice(4).trim();
-      fileHeaderAdded = false;
-      continue;
-    }
-    // Skip markdown fences and top-level headers
-    if (line.startsWith('```') || line.startsWith('## ') || line.startsWith('# ') || line.startsWith('<!--')) {
-      continue;
-    }
-    if (line.toLowerCase().includes(query)) {
-      if (currentFile && !fileHeaderAdded) {
-        if (result.length > 0) result.push('');
-        result.push(`### ${currentFile}`);
-        fileHeaderAdded = true;
-      }
-      result.push(line);
-    }
+    if (result.length === 0) return `No signatures found matching: ${args.query}`;
+    return result.join('\n');
+  } catch (err) {
+    return `_search_signatures failed: ${err.message}_`;
   }
-
-  if (result.length === 0) return `No signatures found matching: ${args.query}`;
-  return result.join('\n');
 }
 
 /**
@@ -280,39 +275,29 @@ function explainFile(args, cwd) {
 
   const lines = ['# explain_file: ' + targetRel, ''];
 
-  // ── Signatures (from context file) ─────────────────────────────────────
+  // ── Signatures (hot + cold + cache via buildSigIndex) ───────────────────
   lines.push('## Signatures');
   let indexedFiles = [];
 
-  if (fs.existsSync(contextPath)) {
-    const ctxContent = fs.readFileSync(contextPath, 'utf8');
-    const ctxLines = ctxContent.split('\n');
-    let capturing = false;
-    const sigLines = [];
-
-    for (const line of ctxLines) {
-      if (line.startsWith('### ')) {
-        if (capturing) break; // already collected our block
-        const rel = line.slice(4).trim().replace(/\\/g, '/');
-        capturing = rel === targetRel || rel.endsWith('/' + targetRel) || targetRel.endsWith('/' + rel);
-        if (capturing) continue;
-      } else if (capturing) {
-        sigLines.push(line);
+  try {
+    const { buildSigIndex } = require('../retrieval/ranker');
+    const index = buildSigIndex(cwd);
+    let sigs = index.get(targetRel);
+    if (!sigs) {
+      for (const [file, fileSigs] of index.entries()) {
+        if (file === targetRel || file.endsWith('/' + targetRel) || targetRel.endsWith('/' + file)) {
+          sigs = fileSigs;
+          break;
+        }
       }
     }
-
-    const sigs = sigLines.filter((l) => l !== '```' && l.trim() !== '');
-    if (sigs.length > 0) {
+    if (sigs && sigs.length > 0) {
       lines.push(...sigs);
     } else {
       lines.push('_No signatures indexed for this file. Run: node gen-context.js_');
     }
-
-    indexedFiles = ctxContent
-      .split('\n')
-      .filter((l) => l.startsWith('### '))
-      .map((l) => path.resolve(cwd, l.slice(4).trim()));
-  } else {
+    indexedFiles = [...index.keys()].map((rel) => path.resolve(cwd, rel));
+  } catch (_) {
     lines.push('_No context file found. Run: node gen-context.js_');
   }
 
@@ -377,37 +362,21 @@ function explainFile(args, cwd) {
  * descending. Helps agents decide which module to query with read_context.
  */
 function listModules(args, cwd) {
-  const contextPath = path.join(cwd, CONTEXT_FILE);
-  if (!fs.existsSync(contextPath)) {
-    return 'No context file found. Run: node gen-context.js';
-  }
-
-  const content = fs.readFileSync(contextPath, 'utf8');
-  const ctxLines = content.split('\n');
-
-  const groups = {}; // key: top-level dir, value: { fileCount, tokenCount }
-  let currentGroup = null;
-  let blockBuf = [];
-
-  function flushBlock() {
-    if (currentGroup === null || blockBuf.length === 0) return;
-    if (!groups[currentGroup]) groups[currentGroup] = { fileCount: 0, tokenCount: 0 };
-    groups[currentGroup].fileCount++;
-    groups[currentGroup].tokenCount += Math.ceil(blockBuf.join('\n').length / 4);
-    blockBuf = [];
-  }
-
-  for (const line of ctxLines) {
-    if (line.startsWith('### ')) {
-      flushBlock();
-      const rel = line.slice(4).trim().replace(/\\/g, '/');
-      const parts = rel.split('/');
-      currentGroup = parts.length > 1 ? parts[0] : '.';
-    } else if (currentGroup !== null) {
-      blockBuf.push(line);
+  try {
+    const { buildSigIndex } = require('../retrieval/ranker');
+    const index = buildSigIndex(cwd);
+    if (index.size === 0) {
+      return 'No context file found. Run: node gen-context.js';
     }
-  }
-  flushBlock();
+
+    const groups = {};
+    for (const [rel, sigs] of index.entries()) {
+      const parts = rel.replace(/\\/g, '/').split('/');
+      const mod = parts.length > 1 ? parts[0] : '.';
+      if (!groups[mod]) groups[mod] = { fileCount: 0, tokenCount: 0 };
+      groups[mod].fileCount++;
+      groups[mod].tokenCount += Math.ceil(sigs.join('\n').length / 4);
+    }
 
   const sorted = Object.entries(groups)
     .map(([mod, data]) => ({ module: mod, fileCount: data.fileCount, tokenCount: data.tokenCount }))
@@ -428,6 +397,9 @@ function listModules(args, cwd) {
     '',
     '_Use `read_context({ module: "name" })` to get signatures for a specific module._',
   ].join('\n');
+  } catch (err) {
+    return `_list_modules failed: ${err.message}_`;
+  }
 }
 
 /**
@@ -438,11 +410,6 @@ function listModules(args, cwd) {
  */
 function queryContext(args, cwd) {
   if (!args || !args.query) return 'Missing required argument: query';
-
-  const contextPath = path.join(cwd, CONTEXT_FILE);
-  if (!fs.existsSync(contextPath)) {
-    return 'No context file found. Run: node gen-context.js';
-  }
 
   try {
     const { rank, buildSigIndex, formatRankTable } = require('../retrieval/ranker');
