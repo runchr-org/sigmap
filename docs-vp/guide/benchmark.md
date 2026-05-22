@@ -1,13 +1,13 @@
 ---
 title: Benchmark overview
-description: Official v6.10.10 benchmark snapshot. 97.9% average token reduction across 21 repos, 78.9% retrieval hit@5, 40.6% fewer prompts, and R language support verified.
+description: Official v6.10.10 benchmark snapshot. 96.5% average token reduction across 21 repos, 80% retrieval hit@5, 41.4% fewer prompts, and R language support verified.
 head:
   - - meta
     - property: og:title
       content: "SigMap benchmark overview — v6.10.10 snapshot with R language"
   - - meta
     - property: og:description
-      content: "Token, retrieval, quality, and task metrics from latest v6.10.10 benchmark run with 21 repositories including R language support."
+      content: "Token, retrieval, quality, and task metrics from latest v6.10.10 benchmark run (2026-05-22) with 21 repositories including R language support."
   - - meta
     - property: og:url
       content: "https://manojmallick.github.io/sigmap/guide/benchmark"
@@ -16,15 +16,15 @@ head:
 # Benchmark overview
 
 ::: info Official v6.10.10 benchmark snapshot (21 repos, including R language)
-**Benchmark ID:** sigmap-v6.10-main &nbsp;·&nbsp; **Date:** 2026-05-12
+**Benchmark ID:** sigmap-v6.10-main &nbsp;·&nbsp; **Date:** 2026-05-22
 
 | Metric | Value |
 |---|---:|
-| Hit@5 (18 core repos) | **78.9%** vs 13.6% baseline |
-| Token reduction (21 repos) | **97.9%** |
-| Retrieval lift | **5.8×** |
-| Prompt reduction | **40.6%** (2.84 → 1.66) |
-| Task success proxy | **52.2%** |
+| Hit@5 (18 core repos) | **80%** vs 13.6% baseline |
+| Token reduction (21 repos) | **96.5%** |
+| Retrieval lift | **5.9×** |
+| Prompt reduction | **41.4%** (2.84 → 1.67) |
+| Task success proxy | **53.3%** |
 | GPT-4o overflow (without → with) | **16/21 → 0/21** |
 :::
 
@@ -39,28 +39,28 @@ This is the landing page for the public benchmark story. It answers four differe
 
 ## Official v6.10.10 snapshot (with R language support)
 
-Latest saved benchmark run: **2026-05-12 (v6.10.10)**
+Latest saved benchmark run: **2026-05-22 (v6.10.10)**
 
 | Metric | Result |
 |---|---:|
 | Token reduction repos | 21 (including R: ggplot2, dplyr, shiny) |
 | Retrieval benchmark repos | 18 (core languages) |
 | Total tasks | 90 |
-| Average token reduction (all 21) | **97.9%** (13.5M → 278.1K tokens) |
-| Retrieval hit@5 (18 core) | **78.9%** |
-| Graph-boosted hit@5 | **78.9%** |
+| Average token reduction (all 21) | **96.5%** |
+| Retrieval hit@5 (18 core) | **80%** |
+| Graph-boosted hit@5 | **80%** |
 | Random baseline hit@5 | 13.6% |
-| Prompt reduction | **40.6%** (2.84 → 1.66 prompts) |
+| Prompt reduction | **41.4%** (2.84 → 1.67 prompts) |
 | GPT-4o overflow repos without SigMap | **16 / 21** |
-| GPT-4o monthly input savings at 10 calls/day | **$10,500+** |
+| GPT-4o monthly input savings at 10 calls/day | **$9,899.90** |
 
 ## What each benchmark proves
 
 ### 1. Token reduction (21 repositories)
 
 - Raw source across benchmark set: **13,499,894** tokens (21 repos)
-- Final SigMap output: **278,065** tokens
-- Overall reduction: **97.9%**
+- Final SigMap output: **~470,000** tokens
+- Overall reduction: **96.5%**
 - **New in v6.10.10:** R language support verified
   - ggplot2: 94.3% reduction (381.5K → 21.7K tokens)
   - dplyr: 93.4% reduction (145.1K → 9.5K tokens)
@@ -68,19 +68,19 @@ Latest saved benchmark run: **2026-05-12 (v6.10.10)**
 
 ### 2. Retrieval quality
 
-- SigMap hit@5: **78.9%**
-- Graph-boosted hit@5: **78.9%** (+0.0pp with dependency graph)
+- SigMap hit@5: **80%**
+- Graph-boosted hit@5: **80%** (+0.0pp with dependency graph)
 - Random baseline: **13.6%**
-- Lift: **5.8x**
+- Lift: **5.9x**
 
 This is the best benchmark when the question is: *"Does SigMap actually put the right file in context?"*
 
 ### 3. Task outcomes
 
-- Correct: **47 / 90** (52.2%)
+- Correct: **48 / 90** (53.3%)
 - Partial: **24 / 90** (26.7%)
-- Wrong: **19 / 90** (21.1%)
-- Average prompts: **2.84 → 1.66**
+- Wrong: **18 / 90** (20%)
+- Average prompts: **2.84 → 1.67**
 
 This is the best benchmark when the question is: *"Does the developer need fewer retries to finish the job?"*
 

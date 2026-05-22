@@ -20,15 +20,15 @@ SigMap was not tuned for one repo. This benchmark matters because it shows the s
 :::
 
 ::: info Official v6.10.10 benchmark snapshot
-**Benchmark ID:** sigmap-v6.10-main &nbsp;·&nbsp; **Date:** 2026-05-12 (with R language)
+**Benchmark ID:** sigmap-v6.10-main &nbsp;·&nbsp; **Date:** 2026-05-22 (with R language)
 
 | Metric | Value |
 |---|---:|
-| Hit@5 | **78.9%** vs 13.6% baseline |
-| Retrieval lift | **5.8×** |
-| Prompt reduction | **40.6%** (2.84 → 1.66) |
-| Task success proxy | **52.2%** |
-| Overall token reduction | **97.9%** |
+| Hit@5 | **80%** vs 13.6% baseline |
+| Retrieval lift | **5.9×** |
+| Prompt reduction | **41.4%** (2.84 → 1.67) |
+| Task success proxy | **53.3%** |
+| Overall token reduction | **96.5%** |
 | GPT-4o overflow (without → with) | **16/21 → 0/21** |
 :::
 
@@ -37,7 +37,7 @@ The important part of SigMap's benchmark story is not just the topline score. It
 ::: info What "generalization" means here
 SigMap's signature extractors are hand-written regex patterns, not ML models. Generalization
 means: *do the patterns hold up on codebases the authors never inspected?* The answer across
-these 90 tasks is yes — 78.9% hit@5 with no per-repo tuning in the latest saved v6.10.10 run.
+these 90 tasks is yes — 80% hit@5 with no per-repo tuning in the latest saved v6.10.10 run.
 :::
 
 - **21 repos** (including 3 R language repos)

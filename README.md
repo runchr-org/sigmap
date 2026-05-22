@@ -88,12 +88,12 @@ Ask → Rank → Context → Validate → Judge → Learn
 
 ```
 Benchmark : sigmap-v6.10-main (21 repositories, including R language)
-Date      : 2026-05-12
+Date      : 2026-05-22
 
-Hit@5          : 78.9%   (baseline 13.6%  — 5.8× lift)
-Token reduction: 97.9%   (13.5M → 278K tokens across 21 repos)
-Prompt reduction : 40.6% (2.84 → 1.66 prompts per task)
-Task success   : 52.2%   (baseline 10%)
+Hit@5          : 80%   (baseline 13.6%  — 5.9× lift)
+Token reduction: 96.5%   (across 21 repos)
+Prompt reduction : 41.4% (2.84 → 1.67 prompts per task)
+Task success   : 53.3%   (baseline 10%)
 Repos tested   : 21 (JavaScript, Python, Go, Rust, Java, R, C++, C#, Dart, Swift, Ruby, PHP, Scala, Kotlin, and more)
 ```
 

@@ -85,7 +85,7 @@ features:
 <div style="margin-top:.4rem;display:inline-flex;flex-wrap:wrap;gap:.5rem;justify-content:center;background:var(--vp-c-default-soft,#f3f4f6);border:1px solid rgba(0,0,0,.08);border-radius:999px;padding:.55rem .9rem;font-size:.9rem;color:var(--vp-c-text-2)">
   <span><strong>Benchmark:</strong> sigmap-v6.10-main</span>
   <span>·</span>
-  <span>78.9% hit@5 · 78.9% graph-boosted · 2026-05-12</span>
+  <span>80% hit@5 · 96.5% token reduction · 2026-05-22</span>
 </div>
 </div>
 
@@ -170,13 +170,13 @@ See the full [end-to-end walkthrough](/guide/walkthrough) to watch this in actio
 
 | Metric | Without SigMap | With SigMap |
 |---|:---:|:---:|
-| Task success proxy | 10% | **52.2%** |
-| Prompts per task | 2.84 | **1.66** |
-| Retrieval hit@5 | 13.6% | **78.9%** (78.9% graph-boosted) |
-| Overall token reduction | — | **97.9%** |
+| Task success proxy | 10% | **53.3%** |
+| Prompts per task | 2.84 | **1.67** |
+| Retrieval hit@5 | 13.6% | **80%** (80% graph-boosted) |
+| Overall token reduction | — | **96.5%** |
 | GPT-4o overflow repos | 16/21 | **0/21** |
 
-Latest saved benchmark run: **2026-05-11 (v6.10.6)**.
+Latest saved benchmark run: **2026-05-22 (v6.10.10)**.
 
 </div>
 
