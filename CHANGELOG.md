@@ -10,7 +10,15 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ---
 
-## [6.10.10] — 2026-05-12
+## [6.10.11] — 2026-05-22
+
+### Fixed
+
+- **Test assertions** — Updated integration tests to verify correct benchmark date (2026-05-22) and language count (31 with R + GDScript support). Tests now validate version.json metrics consistency across all documentation files.
+
+---
+
+## [6.10.10] — 2026-05-22
 
 ### Added
 
@@ -25,6 +33,8 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ### Fixed
 
+- **MCP handler improvements** — Merged hot-cold cache and context-cold support into MCP index. MCP tools (`read_context`, `search_signatures`, `get_map`) now correctly serve signatures from multiple sources: primary context file (copilot-instructions.md), cold storage (context-cold.md), and sig-cache index. Fixes issue where MCP clients received partial results when using hot-cold or per-module output strategies.
+- **Ranker hot-cold support** — Extended `buildSigIndex()` to merge signature indexes from multiple sources (primary file + context-cold.md + sig-cache). Added internal helper functions `_mergeSigIndex()`, `_buildSigIndexFromCache()`, and `_enrichSigIndexFromStrategy()` to support hot-cold and memory-efficient strategies without API breakage. Allows monorepo and per-module output strategies to serve complete signatures to rank and MCP handlers.
 - **Windows path normalization in get_impact** — Implement case-insensitive path lookups in dependency graph for Windows compatibility. All paths in forward/reverse maps now normalized to lowercase, enabling `get_impact` to work correctly when file paths have different case (e.g., `src/Ledger/equity_ledger.py` vs `src/ledger/equity_ledger.py`). Applied normalization uniformly across JS, Python, Go, Rust, JVM, Ruby, and R import detection (closes #193).
 
 ---

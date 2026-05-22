@@ -16,15 +16,15 @@ head:
 # Quality benchmark
 
 ::: info Official v6.10.10 benchmark snapshot
-**Benchmark ID:** sigmap-v6.10-main &nbsp;·&nbsp; **Date:** 2026-05-12 (with R language)
+**Benchmark ID:** sigmap-v6.10-main &nbsp;·&nbsp; **Date:** 2026-05-22 (with R language)
 
 | Metric | Value |
 |---|---:|
-| Hit@5 | **78.9%** vs 13.6% baseline |
-| Retrieval lift | **5.8×** |
-| Prompt reduction | **40.6%** (2.84 → 1.66) |
-| Task success proxy | **52.2%** |
-| Overall token reduction | **97.9%** |
+| Hit@5 | **80%** vs 13.6% baseline |
+| Retrieval lift | **5.9×** |
+| Prompt reduction | **41.4%** (2.84 → 1.67) |
+| Task success proxy | **53.3%** |
+| Overall token reduction | **96.5%** |
 | GPT-4o overflow (without → with) | **16/21 → 0/21** |
 :::
 
@@ -34,7 +34,7 @@ Token reduction is the mechanism. This benchmark shows the operational consequen
 - how much code would be hidden without SigMap?
 - what does that mean for API cost?
 
-Latest saved run: **2026-05-12 (v6.10.10)**
+Latest saved run: **2026-05-22 (v6.10.10)**
 
 ## Headline numbers
 
