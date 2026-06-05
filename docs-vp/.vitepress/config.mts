@@ -42,6 +42,7 @@ export default defineConfig({
         text: 'Core workflow',
         items: [
           { text: 'ask', link: '/guide/ask' },
+          { text: 'Surgical Context', link: '/guide/surgical-context' },
           { text: 'validate', link: '/guide/validate' },
           { text: 'judge', link: '/guide/judge' },
           { text: 'Learning & weights', link: '/guide/learning' },

@@ -1,8 +1,9 @@
 'use strict';
 
 /**
- * MCP tool definitions for SigMap.
- * Three tools: read_context, search_signatures, get_map.
+ * MCP tool definitions for SigMap (10 tools).
+ * read_context, search_signatures, get_map, create_checkpoint, get_routing,
+ * explain_file, list_modules, query_context, get_impact, get_lines.
  */
 
 const TOOLS = [
@@ -166,6 +167,34 @@ const TOOLS = [
         },
       },
       required: ['file'],
+    },
+  },
+  {
+    name: 'get_lines',
+    description:
+      'Fetch an exact line range from a source file on demand — the Surgical Context ' +
+      'workhorse. Signatures carry `path:start-end` anchors; call this to read just those ' +
+      'lines instead of re-opening the whole file. Lines are clamped to the file bounds and ' +
+      'secret-scanned (redacted) before return. Path is sandboxed to the project root.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          description:
+            'Relative path from the project root (e.g. "src/config/loader.js"). ' +
+            'Use the path shown in a signature anchor. Use forward slashes.',
+        },
+        start: {
+          type: 'number',
+          description: '1-based start line (inclusive). Clamped to the file bounds.',
+        },
+        end: {
+          type: 'number',
+          description: '1-based end line (inclusive). Clamped to the file bounds.',
+        },
+      },
+      required: ['file', 'start', 'end'],
     },
   },
 ];

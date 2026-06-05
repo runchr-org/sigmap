@@ -448,4 +448,61 @@ function getImpact(args, cwd) {
   }
 }
 
-module.exports = { readContext, searchSignatures, getMap, createCheckpoint, getRouting, explainFile, listModules, queryContext, getImpact };
+/**
+ * get_lines({ file, start, end }) → string
+ *
+ * Surgical Context demand-driven fetch: returns an exact, clamped line range from a
+ * source file. The path is resolved inside the project root (no traversal escape) and
+ * the returned lines are secret-scanned via the same redactor used for signatures.
+ */
+function getLines(args, cwd) {
+  if (!args || !args.file) return 'Missing required argument: file';
+
+  const rel = String(args.file).replace(/\\/g, '/').replace(/^\//, '');
+  const abs = path.resolve(cwd, rel);
+
+  // Sandbox: refuse paths that resolve outside the project root.
+  const root = path.resolve(cwd);
+  if (abs !== root && !abs.startsWith(root + path.sep)) {
+    return `Refused: ${rel} resolves outside the project root`;
+  }
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+    return `File not found: ${rel}`;
+  }
+
+  const start = parseInt(args.start, 10);
+  const end = parseInt(args.end, 10);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return 'Arguments "start" and "end" must be numbers (1-based line numbers).';
+  }
+
+  let lines;
+  try {
+    lines = fs.readFileSync(abs, 'utf8').split('\n');
+  } catch (err) {
+    return `Could not read ${rel}: ${err.message}`;
+  }
+
+  const total = lines.length;
+  const from = Math.max(1, Math.min(start, end));
+  const to = Math.min(total, Math.max(start, end));
+  if (from > total) return `${rel} has only ${total} lines; requested ${start}-${end}`;
+
+  const slice = lines.slice(from - 1, to);
+
+  // Redaction scan: reuse the signature secret scanner line-by-line.
+  let safeLines = slice;
+  try {
+    const { scan } = require('../security/scanner');
+    safeLines = scan(slice, rel).safe;
+  } catch (_) {} // non-fatal: fall back to raw slice
+
+  return [
+    `# ${rel}:${from}-${to}`,
+    '```',
+    ...safeLines,
+    '```',
+  ].join('\n');
+}
+
+module.exports = { readContext, searchSignatures, getMap, createCheckpoint, getRouting, explainFile, listModules, queryContext, getImpact, getLines };

@@ -304,6 +304,106 @@ function sparkline(values) {
   }).join('');
 }
 
+function escapeAttr(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+// Surgical Context (v6.12.0): read the published token-reduction benchmark and
+// aggregate it for the dashboard panel. Numbers are never hand-typed — they come
+// straight from benchmarks/reports/token-reduction.json.
+function readTokenReduction(cwd) {
+  const p = path.join(cwd, 'benchmarks', 'reports', 'token-reduction.json');
+  let data;
+  try { data = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return null; }
+  const repos = Array.isArray(data.repos) ? data.repos : [];
+  if (repos.length === 0) return null;
+
+  let baseline = 0, signatures = 0, surgical = 0, hasSurgical = false;
+  for (const r of repos) {
+    baseline += toNumber(r.rawTokens) || 0;
+    signatures += toNumber(r.finalTokens) || 0;
+    const s = toNumber(r.surgicalTokens);
+    if (s !== null) { surgical += s; hasSurgical = true; }
+  }
+
+  const out = {
+    version: data.version || null,
+    repoCount: repos.length,
+    baseline,
+    signatures,
+    savedPct: baseline > 0 ? Math.round((1 - signatures / baseline) * 1000) / 10 : 0,
+    perRepo: repos.map((r) => ({
+      repo: r.repo,
+      language: r.language,
+      rawTokens: toNumber(r.rawTokens) || 0,
+      finalTokens: toNumber(r.finalTokens) || 0,
+      reductionPct: toNumber(r.reductionPct) || 0,
+    })),
+  };
+  if (hasSurgical) {
+    out.surgical = surgical;
+    out.surgicalSavedPct = baseline > 0 ? Math.round((1 - surgical / baseline) * 1000) / 10 : 0;
+  }
+  return out;
+}
+
+function tokenReductionPanelHtml(tr) {
+  if (!tr) {
+    return '<div class="panel"><div class="label">Token Reduction</div>' +
+      '<div class="value" style="font-size:13px">No token-reduction benchmark found — run the token benchmark to populate this panel.</div></div>';
+  }
+  const fmt = (n) => Number(n).toLocaleString('en-US');
+  const tiers = [
+    { label: 'Whole-file baseline', value: fmt(tr.baseline) + ' tok' },
+    { label: 'Ranked signatures (ask)', value: fmt(tr.signatures) + ' tok' },
+  ];
+  if (tr.surgical != null) {
+    tiers.push({ label: 'Surgical (index + delta)', value: fmt(tr.surgical) + ' tok' });
+    tiers.push({ label: 'Saved (surgical)', value: tr.surgicalSavedPct + '%' });
+  } else {
+    tiers.push({ label: 'Saved', value: tr.savedPct + '%' });
+  }
+  const tierHtml = tiers.map((t) =>
+    `<div class="card"><div class="label">${escapeAttr(t.label)}</div><div class="value">${escapeAttr(t.value)}</div></div>`
+  ).join('');
+
+  // Proportional comparison bar (baseline = full width).
+  const sigPct = tr.baseline > 0 ? Math.max(0.4, (tr.signatures / tr.baseline) * 100) : 0;
+  const surgPct = (tr.surgical != null && tr.baseline > 0) ? Math.max(0.4, (tr.surgical / tr.baseline) * 100) : null;
+  const barRow = (label, pct, color) =>
+    `<div style="margin:4px 0;font-size:11px;color:#8ea0d9">${escapeAttr(label)}</div>` +
+    `<div style="background:#0a0f1e;border:1px solid #223056;border-radius:6px;height:14px;overflow:hidden">` +
+    `<div style="width:${pct.toFixed(1)}%;height:100%;background:${color}"></div></div>`;
+  const bars = [
+    barRow('Whole-file baseline (100%)', 100, '#3a4a78'),
+    barRow(`Ranked signatures — ${tr.savedPct}% saved`, sigPct, '#2e7d6b'),
+    surgPct != null ? barRow(`Surgical — ${tr.surgicalSavedPct}% saved`, surgPct, '#5ad1a8') : '',
+  ].filter(Boolean).join('');
+
+  const rows = tr.perRepo.slice(0, 8).map((r) =>
+    `<tr><td>${escapeAttr(r.repo)}</td><td>${escapeAttr(r.language)}</td>` +
+    `<td style="text-align:right">${fmt(r.rawTokens)}</td>` +
+    `<td style="text-align:right">${fmt(r.finalTokens)}</td>` +
+    `<td style="text-align:right">${r.reductionPct}%</td></tr>`
+  ).join('');
+
+  return [
+    '<div class="panel">',
+    `<div class="label">Token Reduction — ${tr.repoCount} benchmark repos${tr.version ? ' · v' + escapeAttr(tr.version) : ''}</div>`,
+    `<div class="grid" style="margin:8px 0">${tierHtml}</div>`,
+    bars,
+    '<table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:12px">',
+    '<thead><tr style="color:#8ea0d9;text-align:left">',
+    '<th>Repo</th><th>Lang</th><th style="text-align:right">Baseline</th><th style="text-align:right">Signatures</th><th style="text-align:right">Saved</th>',
+    '</tr></thead>',
+    `<tbody>${rows}</tbody>`,
+    '</table>',
+    '</div>',
+  ].join('');
+}
+
 function buildDashboardData(cwd, health) {
   const entries = readLog(cwd);
   const recent = entries.slice(-30);
@@ -326,15 +426,19 @@ function buildDashboardData(cwd, health) {
     extractorCoverage: coverage.pct,
   };
 
+  const tokenReduction = readTokenReduction(cwd);
+
   return {
     summary,
     tokenReductionTrend,
     hitAt5Trend,
     coverage,
+    tokenReduction,
     charts: {
       tokenReductionSvg: lineChartSvg(tokenReductionTrend, 'Token reduction trend (last 30 tracked runs)', '%'),
       hitAt5Svg: lineChartSvg(hitAt5Trend, 'hit@5 trend (last 30 benchmark runs)', ''),
       coverageSvg: barChartSvg(coverage.perLanguage),
+      tokenSavingsPanel: tokenReductionPanelHtml(tokenReduction),
     },
   };
 }
@@ -379,6 +483,7 @@ function generateDashboardHtml(cwd, health) {
     '<h1>SigMap v2.10 dashboard</h1>',
     '<div class="sub">Self-contained report. No external scripts, styles, or network calls.</div>',
     `<div class="grid">${cardHtml}</div>`,
+    data.charts.tokenSavingsPanel,
     `<div class="panel">${data.charts.tokenReductionSvg}</div>`,
     `<div class="panel">${data.charts.hitAt5Svg}</div>`,
     `<div class="panel">${data.charts.coverageSvg}</div>`,
