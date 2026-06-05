@@ -4052,6 +4052,96 @@ __factories["./src/format/benchmark-report"] = function(module, exports) {
       }).join('');
     }
 
+    function escapeAttr(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
+    function readTokenReduction(cwd) {
+      const p = path.join(cwd, 'benchmarks', 'reports', 'token-reduction.json');
+      let data;
+      try { data = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return null; }
+      const repos = Array.isArray(data.repos) ? data.repos : [];
+      if (repos.length === 0) return null;
+      let baseline = 0, signatures = 0, surgical = 0, hasSurgical = false;
+      for (const r of repos) {
+        baseline += toNumber(r.rawTokens) || 0;
+        signatures += toNumber(r.finalTokens) || 0;
+        const s = toNumber(r.surgicalTokens);
+        if (s !== null) { surgical += s; hasSurgical = true; }
+      }
+      const out = {
+        version: data.version || null,
+        repoCount: repos.length,
+        baseline,
+        signatures,
+        savedPct: baseline > 0 ? Math.round((1 - signatures / baseline) * 1000) / 10 : 0,
+        perRepo: repos.map((r) => ({
+          repo: r.repo, language: r.language,
+          rawTokens: toNumber(r.rawTokens) || 0,
+          finalTokens: toNumber(r.finalTokens) || 0,
+          reductionPct: toNumber(r.reductionPct) || 0,
+        })),
+      };
+      if (hasSurgical) {
+        out.surgical = surgical;
+        out.surgicalSavedPct = baseline > 0 ? Math.round((1 - surgical / baseline) * 1000) / 10 : 0;
+      }
+      return out;
+    }
+
+    function tokenReductionPanelHtml(tr) {
+      if (!tr) {
+        return '<div class="panel"><div class="label">Token Reduction</div>' +
+          '<div class="value" style="font-size:13px">No token-reduction benchmark found — run the token benchmark to populate this panel.</div></div>';
+      }
+      const fmt = (n) => Number(n).toLocaleString('en-US');
+      const tiers = [
+        { label: 'Whole-file baseline', value: fmt(tr.baseline) + ' tok' },
+        { label: 'Ranked signatures (ask)', value: fmt(tr.signatures) + ' tok' },
+      ];
+      if (tr.surgical != null) {
+        tiers.push({ label: 'Surgical (index + delta)', value: fmt(tr.surgical) + ' tok' });
+        tiers.push({ label: 'Saved (surgical)', value: tr.surgicalSavedPct + '%' });
+      } else {
+        tiers.push({ label: 'Saved', value: tr.savedPct + '%' });
+      }
+      const tierHtml = tiers.map((t) =>
+        `<div class="card"><div class="label">${escapeAttr(t.label)}</div><div class="value">${escapeAttr(t.value)}</div></div>`
+      ).join('');
+      const sigPct = tr.baseline > 0 ? Math.max(0.4, (tr.signatures / tr.baseline) * 100) : 0;
+      const surgPct = (tr.surgical != null && tr.baseline > 0) ? Math.max(0.4, (tr.surgical / tr.baseline) * 100) : null;
+      const barRow = (label, pct, color) =>
+        `<div style="margin:4px 0;font-size:11px;color:#8ea0d9">${escapeAttr(label)}</div>` +
+        `<div style="background:#0a0f1e;border:1px solid #223056;border-radius:6px;height:14px;overflow:hidden">` +
+        `<div style="width:${pct.toFixed(1)}%;height:100%;background:${color}"></div></div>`;
+      const bars = [
+        barRow('Whole-file baseline (100%)', 100, '#3a4a78'),
+        barRow(`Ranked signatures — ${tr.savedPct}% saved`, sigPct, '#2e7d6b'),
+        surgPct != null ? barRow(`Surgical — ${tr.surgicalSavedPct}% saved`, surgPct, '#5ad1a8') : '',
+      ].filter(Boolean).join('');
+      const rows = tr.perRepo.slice(0, 8).map((r) =>
+        `<tr><td>${escapeAttr(r.repo)}</td><td>${escapeAttr(r.language)}</td>` +
+        `<td style="text-align:right">${fmt(r.rawTokens)}</td>` +
+        `<td style="text-align:right">${fmt(r.finalTokens)}</td>` +
+        `<td style="text-align:right">${r.reductionPct}%</td></tr>`
+      ).join('');
+      return [
+        '<div class="panel">',
+        `<div class="label">Token Reduction — ${tr.repoCount} benchmark repos${tr.version ? ' · v' + escapeAttr(tr.version) : ''}</div>`,
+        `<div class="grid" style="margin:8px 0">${tierHtml}</div>`,
+        bars,
+        '<table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:12px">',
+        '<thead><tr style="color:#8ea0d9;text-align:left">',
+        '<th>Repo</th><th>Lang</th><th style="text-align:right">Baseline</th><th style="text-align:right">Signatures</th><th style="text-align:right">Saved</th>',
+        '</tr></thead>',
+        `<tbody>${rows}</tbody>`,
+        '</table>',
+        '</div>',
+      ].join('');
+    }
+
     function buildDashboardData(cwd, health) {
       const entries = readLog(cwd);
       const recent = entries.slice(-30);
@@ -4070,15 +4160,18 @@ __factories["./src/format/benchmark-report"] = function(module, exports) {
         overBudgetStreak: overBudgetStreak(entries),
         extractorCoverage: coverage.pct,
       };
+      const tokenReduction = readTokenReduction(cwd);
       return {
         summary,
         tokenReductionTrend,
         hitAt5Trend,
         coverage,
+        tokenReduction,
         charts: {
           tokenReductionSvg: lineChartSvg(tokenReductionTrend, 'Token reduction trend (last 30 tracked runs)', '%'),
           hitAt5Svg: lineChartSvg(hitAt5Trend, 'hit@5 trend (last 30 benchmark runs)', ''),
           coverageSvg: barChartSvg(coverage.perLanguage),
+          tokenSavingsPanel: tokenReductionPanelHtml(tokenReduction),
         },
       };
     }
@@ -4112,6 +4205,7 @@ __factories["./src/format/benchmark-report"] = function(module, exports) {
         '<h1>SigMap v2.10 dashboard</h1>',
         '<div class="sub">Self-contained report. No external scripts, styles, or network calls.</div>',
         `<div class="grid">${cardHtml}</div>`,
+        data.charts.tokenSavingsPanel,
         `<div class="panel">${data.charts.tokenReductionSvg}</div>`,
         `<div class="panel">${data.charts.hitAt5Svg}</div>`,
         `<div class="panel">${data.charts.coverageSvg}</div>`,
@@ -5719,7 +5813,56 @@ __factories["./src/mcp/handlers"] = function(module, exports) {
     }
   }
 
-  module.exports = { readContext, searchSignatures, getMap, createCheckpoint, getRouting, explainFile, listModules, queryContext, getImpact };
+  function getLines(args, cwd) {
+    if (!args || !args.file) return 'Missing required argument: file';
+
+    const rel = String(args.file).replace(/\\/g, '/').replace(/^\//, '');
+    const abs = path.resolve(cwd, rel);
+
+    // Sandbox: refuse paths that resolve outside the project root.
+    const root = path.resolve(cwd);
+    if (abs !== root && !abs.startsWith(root + path.sep)) {
+      return `Refused: ${rel} resolves outside the project root`;
+    }
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+      return `File not found: ${rel}`;
+    }
+
+    const start = parseInt(args.start, 10);
+    const end = parseInt(args.end, 10);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+      return 'Arguments "start" and "end" must be numbers (1-based line numbers).';
+    }
+
+    let lines;
+    try {
+      lines = fs.readFileSync(abs, 'utf8').split('\n');
+    } catch (err) {
+      return `Could not read ${rel}: ${err.message}`;
+    }
+
+    const total = lines.length;
+    const from = Math.max(1, Math.min(start, end));
+    const to = Math.min(total, Math.max(start, end));
+    if (from > total) return `${rel} has only ${total} lines; requested ${start}-${end}`;
+
+    const slice = lines.slice(from - 1, to);
+
+    let safeLines = slice;
+    try {
+      const { scan } = __require('./src/security/scanner');
+      safeLines = scan(slice, rel).safe;
+    } catch (_) {}
+
+    return [
+      `# ${rel}:${from}-${to}`,
+      '```',
+      ...safeLines,
+      '```',
+    ].join('\n');
+  }
+
+  module.exports = { readContext, searchSignatures, getMap, createCheckpoint, getRouting, explainFile, listModules, queryContext, getImpact, getLines };
 };
 
 // ── ./src/learning/weights ──
@@ -5890,14 +6033,14 @@ __factories["./src/mcp/server"] = function(module, exports) {
    *
    * Supported methods:
    *   initialize        → serverInfo + capabilities
-   *   tools/list        → 3 tool definitions
+   *   tools/list        → 10 tool definitions
    *   tools/call        → dispatch to handler, return result
    */
-  
+
   const readline = require('readline');
   const { TOOLS } = __require('./src/mcp/tools');
-  const { readContext, searchSignatures, getMap, createCheckpoint, getRouting, explainFile, listModules, queryContext, getImpact } = __require('./src/mcp/handlers');
-  
+  const { readContext, searchSignatures, getMap, createCheckpoint, getRouting, explainFile, listModules, queryContext, getImpact, getLines } = __require('./src/mcp/handlers');
+
   const SERVER_INFO = {
     name: 'sigmap',
   version: '6.11.1',
@@ -5957,6 +6100,7 @@ __factories["./src/mcp/server"] = function(module, exports) {
         else if (name === 'list_modules') text = listModules(args, cwd);
         else if (name === 'query_context') text = queryContext(args, cwd);
         else if (name === 'get_impact') text = getImpact(args, cwd);
+        else if (name === 'get_lines') text = getLines(args, cwd);
         else {
           respondError(id, -32601, `Unknown tool: ${name}`);
           return;
@@ -6184,8 +6328,36 @@ __factories["./src/mcp/tools"] = function(module, exports) {
         required: ['file'],
       },
     },
+    {
+      name: 'get_lines',
+      description:
+        'Fetch an exact line range from a source file on demand — the Surgical Context ' +
+        'workhorse. Signatures carry `path:start-end` anchors; call this to read just those ' +
+        'lines instead of re-opening the whole file. Lines are clamped to the file bounds and ' +
+        'secret-scanned (redacted) before return. Path is sandboxed to the project root.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          file: {
+            type: 'string',
+            description:
+              'Relative path from the project root (e.g. "src/config/loader.js"). ' +
+              'Use the path shown in a signature anchor. Use forward slashes.',
+          },
+          start: {
+            type: 'number',
+            description: '1-based start line (inclusive). Clamped to the file bounds.',
+          },
+          end: {
+            type: 'number',
+            description: '1-based end line (inclusive). Clamped to the file bounds.',
+          },
+        },
+        required: ['file', 'start', 'end'],
+      },
+    },
   ];
-  
+
   module.exports = { TOOLS };
   
 };
@@ -8987,8 +9159,28 @@ function applyTokenBudget(fileEntries, maxTokens) {
   let total = fileEntries.reduce((s, e) => s + estimateTokens(e.sigs.join('\n')), 0);
   if (total <= effectiveBudget) return fileEntries;
 
+  // v6.12 Surgical Context — progressive disclosure: before dropping whole files,
+  // collapse signature BODIES to their line-anchor pointers (keep `symbol :start-end`).
+  // Only sigs that actually carry an anchor shrink; the agent can re-fetch bodies via
+  // the get_lines MCP tool. This degrades gracefully instead of losing files outright.
+  let working = fileEntries;
+  const collapsed = fileEntries.map((e) => {
+    const slim = (e.sigs || []).map((s) => {
+      const line = toIndexLine(s);
+      return line && /:\d+-\d+/.test(line) ? line : s; // replace only when it yields an anchor
+    });
+    return { ...e, sigs: slim };
+  });
+  const collapsedTotal = collapsed.reduce((s, e) => s + estimateTokens(e.sigs.join('\n')), 0);
+  if (collapsedTotal < total) {
+    console.warn(`[sigmap] budget: collapsed bodies to anchors, reclaimed ~${total - collapsedTotal} tokens`);
+    working = collapsed;
+    total = collapsedTotal;
+    if (total <= effectiveBudget) return working; // anchor collapse alone fit the budget
+  }
+
   // Sort by drop priority (drop first = index 0)
-  const withPriority = fileEntries.map((e) => {
+  const withPriority = working.map((e) => {
     let priority = 0;
     let dropReason = 'budget: low recency';
     if (isGeneratedFile(e.filePath)) { priority = 10; dropReason = 'budget: generated file'; }
@@ -10576,6 +10768,40 @@ function buildMiniContext(ranked, cwd) {
   return lines.join('\n');
 }
 
+// Surgical Context Phase 2 (v6.12.0): collapse one signature to a symbol-header
+// pointer — `<declaration head>  :start-end` — dropping param lists, return types,
+// and any body so the agent fetches the real lines on demand via the get_lines MCP tool.
+function toIndexLine(sig) {
+  if (typeof sig !== 'string') return '';
+  // Anchor is `:start-end`, optionally followed by a `# doc hint` (Python extractor).
+  const m = sig.match(/\s*:(\d+)-(\d+)(?:\s*#.*)?\s*$/);
+  if (!m) {
+    // No anchor (e.g. an indented member) — keep a trimmed head so it stays listed.
+    return sig.trim().slice(0, 60);
+  }
+  const range = `:${m[1]}-${m[2]}`;
+  let head = sig.slice(0, m.index).trim();
+  const paren = head.indexOf('(');
+  if (paren > 0) head = head.slice(0, paren).trim();      // drop params
+  head = head.replace(/\s*[=→].*$/, '').trim();           // drop return type / assignment tail
+  return head ? `${head}  ${range}` : range;
+}
+
+// Two-tier index output: emit only `file → [symbol:start-end]` headers (no bodies).
+function buildIndexContext(ranked, cwd) {
+  const lines = [
+    '# SigMap Query Context (index mode)',
+    `Generated: ${new Date().toISOString()}`,
+    '> Symbol index only — fetch exact lines on demand via the `get_lines` MCP tool.',
+    '',
+  ];
+  for (const { file, sigs } of ranked) {
+    const idx = sigs.slice(0, 40).map(toIndexLine).filter(Boolean);
+    lines.push(`## ${file}`, '```', ...idx, '```', '');
+  }
+  return lines.join('\n');
+}
+
 function computeCurrentRisk(cwd) {
   try {
     const { execSync } = require('child_process');
@@ -10746,7 +10972,7 @@ function main() {
   const mode = modeIdx !== -1
     ? args[modeIdx + 1]
     : (config.mode || 'default');
-  const VALID_MODES = ['default', 'fast', 'full', 'both'];
+  const VALID_MODES = ['default', 'fast', 'full', 'both', 'index'];
   if (mode && !VALID_MODES.includes(mode)) {
     console.error(`[sigmap] unknown --mode "${mode}". Valid: ${VALID_MODES.join(', ')}`);
     process.exit(1);
@@ -10825,9 +11051,23 @@ function main() {
       }
     }
 
+    // v6.12: Delta context — restrict to files changed since a git ref (--since <ref>).
+    const sinceIdx = args.indexOf('--since');
+    if (sinceIdx !== -1 && args[sinceIdx + 1]) {
+      const baseRef = args[sinceIdx + 1];
+      const changed = getFilesChangedSinceBase(cwd, baseRef);
+      const before = ranked.length;
+      ranked = ranked.filter((r) => changed.has(path.resolve(cwd, r.file)));
+      if (!args.includes('--json')) {
+        process.stderr.write(`[sigmap] Δ since ${baseRef}: ${ranked.length}/${before} ranked files changed\n`);
+      }
+    }
+
     // v6.8: Save session for future --followup calls
     saveSession(cwd, { intent, topFiles: ranked.slice(0, 5).map(r => ({ file: r.file, score: r.score })), query });
-    const miniCtx = buildMiniContext(ranked, cwd);
+    // v6.12: Two-tier output — `--mode index` emits symbol pointers only (bodies via get_lines).
+    const indexMode = mode === 'index' || args.includes('--index');
+    const miniCtx = indexMode ? buildIndexContext(ranked, cwd) : buildMiniContext(ranked, cwd);
     const outPath = path.join(cwd, '.context', 'query-context.md');
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, miniCtx, 'utf8');

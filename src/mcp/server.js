@@ -8,13 +8,13 @@
  *
  * Supported methods:
  *   initialize        → serverInfo + capabilities
- *   tools/list        → 3 tool definitions
+ *   tools/list        → 10 tool definitions
  *   tools/call        → dispatch to handler, return result
  */
 
 const readline = require('readline');
 const { TOOLS } = require('./tools');
-const { readContext, searchSignatures, getMap, createCheckpoint, getRouting, explainFile, listModules, queryContext, getImpact } = require('./handlers');
+const { readContext, searchSignatures, getMap, createCheckpoint, getRouting, explainFile, listModules, queryContext, getImpact, getLines } = require('./handlers');
 
 const SERVER_INFO = {
   name: 'sigmap',
@@ -75,6 +75,7 @@ function dispatch(msg, cwd) {
       else if (name === 'list_modules') text = listModules(args, cwd);
       else if (name === 'query_context') text = queryContext(args, cwd);
       else if (name === 'get_impact') text = getImpact(args, cwd);
+      else if (name === 'get_lines') text = getLines(args, cwd);
       else {
         respondError(id, -32601, `Unknown tool: ${name}`);
         return;
