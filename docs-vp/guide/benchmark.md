@@ -117,6 +117,8 @@ node scripts/run-task-benchmark.mjs --save
 node scripts/run-benchmark-matrix.mjs --save --skip-clone
 ```
 
+Each benchmark repository is **pinned to a fixed commit** in `scripts/run-benchmark.mjs` (fetched by SHA on clone). The corpus is frozen, so retrieval and token numbers move only when SigMap's own ranking/extraction changes — not when an upstream repo does. This makes hit@5 a true release-over-release signal rather than a moving target.
+
 The matrix run writes:
 
 - `benchmarks/reports/token-reduction.json`
