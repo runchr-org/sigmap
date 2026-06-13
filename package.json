@@ -1,7 +1,7 @@
 {
   "name": "sigmap",
   "version": "6.15.0",
-  "description": "Zero-dependency AI context engine — 97% token reduction. No npm install. Runs on Node 18+.",
+  "description": "97% token reduction for AI coding. Extracts function & class signatures with TF-IDF ranking to feed only the right files to Claude, Cursor, Copilot, Aider, Windsurf, local LLMs & MCP. Zero dependencies, runs offline via npx.",
   "main": "gen-context.js",
   "exports": {
     ".": "./packages/core/index.js",
@@ -49,19 +49,25 @@
   ],
   "keywords": [
     "ai",
-    "context",
-    "copilot",
-    "claude",
-    "cursor",
-    "windsurf",
     "llm",
-    "tokens",
+    "context",
     "token-reduction",
-    "code-signatures",
-    "ai-context",
-    "zero-dependency",
+    "codebase",
+    "retrieval",
+    "tf-idf",
+    "cursor",
+    "claude",
+    "github-copilot",
+    "aider",
+    "windsurf",
+    "developer-tools",
     "mcp",
-    "github-copilot"
+    "function-signatures",
+    "code-intelligence",
+    "context-compression",
+    "local-llm",
+    "ollama",
+    "ai-coding"
   ],
   "author": {
     "name": "Manoj Mallick",
@@ -74,6 +80,10 @@
   "homepage": "https://manojmallick.github.io/sigmap/",
   "bugs": {
     "url": "https://github.com/manojmallick/sigmap/issues"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/manojmallick"
   },
   "license": "MIT",
   "engines": {
