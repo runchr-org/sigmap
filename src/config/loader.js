@@ -34,12 +34,12 @@ function loadBaseConfig(extendsVal, cwd) {
           }).on('error', reject);
         });
       })();
-      // sync fallback: use execSync with node -e
-      const { execSync } = require('child_process');
-      const out = execSync(
-        `node -e "const h=require('${extendsVal.startsWith('https') ? 'https' : 'http'}');let d='';h.get(${JSON.stringify(extendsVal)},r=>{r.on('data',c=>d+=c);r.on('end',()=>process.stdout.write(d))}).on('error',()=>process.exit(1))"`,
-        { timeout: 10000, encoding: 'utf8' }
-      );
+      // Sync fallback: run a tiny fetch in a child node process. Shell-free —
+      // execFileSync runs the node binary directly (no /bin/sh) and the URL is
+      // passed as an argv value, never interpolated into a command string.
+      const { execFileSync } = require('child_process');
+      const SYNC_FETCH = "const u=process.argv[1];const h=require(u.startsWith('https')?'https':'http');let d='';h.get(u,r=>{r.on('data',c=>d+=c);r.on('end',()=>process.stdout.write(d))}).on('error',()=>process.exit(1))";
+      const out = execFileSync(process.execPath, ['-e', SYNC_FETCH, extendsVal], { timeout: 10000, encoding: 'utf8' });
       const parsed = JSON.parse(out);
       if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
       fs.writeFileSync(cachePath, JSON.stringify(parsed), 'utf8');

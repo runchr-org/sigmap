@@ -236,12 +236,11 @@ __factories["./src/config/loader"] = function(module, exports) {
         }
       }
       try {
-        const { execSync } = require('child_process');
-        const proto = extendsVal.startsWith('https') ? 'https' : 'http';
-        const out = execSync(
-          `node -e "const h=require('${proto}');let d='';h.get(${JSON.stringify(extendsVal)},r=>{r.on('data',c=>d+=c);r.on('end',()=>process.stdout.write(d))}).on('error',()=>process.exit(1))"`,
-          { timeout: 10000, encoding: 'utf8' }
-        );
+        // Shell-free: run the node binary directly with the URL passed as an argv
+        // value (never interpolated into a command string, never via /bin/sh).
+        const { execFileSync } = require('child_process');
+        const SYNC_FETCH = "const u=process.argv[1];const h=require(u.startsWith('https')?'https':'http');let d='';h.get(u,r=>{r.on('data',c=>d+=c);r.on('end',()=>process.stdout.write(d))}).on('error',()=>process.exit(1))";
+        const out = execFileSync(process.execPath, ['-e', SYNC_FETCH, extendsVal], { timeout: 10000, encoding: 'utf8' });
         const parsed = JSON.parse(out);
         if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
         fs.writeFileSync(cachePath, JSON.stringify(parsed), 'utf8');
@@ -5533,7 +5532,6 @@ __factories["./src/mcp/handlers"] = function(module, exports) {
 
 const fs   = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
 const CONTEXT_FILE = path.join('.github', 'copilot-instructions.md');
 const CONTEXT_COLD_FILE = path.join('.github', 'context-cold.md');
@@ -5680,19 +5678,14 @@ function createCheckpoint(args, cwd) {
   // ── Git info ────────────────────────────────────────────────────────────
   lines.push('## Git state');
   try {
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', {
-      cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+    const branch = __git(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd }).trim();
     lines.push(`**Branch:** ${branch}`);
   } catch (_) {
     lines.push('**Branch:** (not a git repo)');
   }
 
   try {
-    const log = execSync(
-      'git log --oneline -5 --no-decorate 2>/dev/null',
-      { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-    ).trim();
+    const log = __git(['log', '--oneline', '-5', '--no-decorate'], { cwd }).trim();
     if (log) {
       lines.push('');
       lines.push('**Recent commits:**');
@@ -6261,7 +6254,7 @@ const { readContext, searchSignatures, getMap, createCheckpoint, getRouting, exp
 
 const SERVER_INFO = {
   name: 'sigmap',
-  version: '7.0.0',
+  version: '7.0.1',
   description: 'SigMap MCP server — code signatures on demand',
 };
 
@@ -7152,8 +7145,6 @@ __factories["./src/session/notes"] = function(module, exports) {
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
-
 const NOTES_FILE = path.join('.context', 'notes.ndjson');
 const MAX_TEXT = 2000;
 
@@ -7162,13 +7153,7 @@ function notesPath(cwd) {
 }
 
 function _currentBranch(cwd) {
-  try {
-    return execSync('git rev-parse --abbrev-ref HEAD', {
-      cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim() || null;
-  } catch (_) {
-    return null;
-  }
+  return __tryGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd }) || null;
 }
 
 /**
@@ -8703,10 +8688,9 @@ __factories["./src/format/llms-txt"] = function(module, exports) {
   'use strict';
   const path = require('path');
   const fs   = require('fs');
-  const { execSync } = require('child_process');
   function outputPath(cwd) { return path.join(cwd, 'llms.txt'); }
   function getShortCommit(cwd) {
-    try { return execSync('git rev-parse --short HEAD', { cwd, timeout: 2000 }).toString().trim(); }
+    try { return __tryGit(['rev-parse', '--short', 'HEAD'], { cwd, timeout: 2000 }); }
     catch (_) { return ''; }
   }
   function detectVersion(cwd) {
@@ -9031,14 +9015,13 @@ __factories["./src/discovery/source-root-scorer"] = function(module, exports) {
   'use strict';
   const fs   = require('fs');
   const path = require('path');
-  const { execSync } = require('child_process');
   const CODE_EXTS = new Set(['.js','.mjs','.cjs','.ts','.tsx','.jsx','.py','.rb','.go','.rs','.java','.kt','.cs','.cpp','.c','.h','.swift','.dart','.scala','.php']);
   const AUTO_SKIP = new Set(['node_modules','dist','build','.git','.next','.nuxt','vendor','DerivedData','Pods','target','coverage','__pycache__','.venv','venv','.build','Carthage','storybook-static','.gradle','bin','obj','.vs']);
   const PENALTY_DIRS = new Set(['test','tests','spec','__tests__','e2e','docs','doc','docs-vp','examples','example','fixtures','mocks','__mocks__','demo','samples','migrations','benchmarks','scripts']);
   const ROOT_ENTRYPOINTS = { go: ['main.go'], python: ['app.py','main.py','wsgi.py','asgi.py'], javascript: ['index.js','server.js','app.js'], typescript: ['index.ts','main.ts'], rust: [], php: ['index.php'] };
   function getRecentlyChangedDirs(cwd) {
     try {
-      const out = execSync('git log --name-only --format="" HEAD~10 2>/dev/null', { cwd, timeout: 3000 }).toString();
+      const out = __git(['log', '--name-only', '--format=', 'HEAD~10'], { cwd, timeout: 3000 }).toString();
       return new Set(out.split('\n').filter(Boolean).map(f => f.split('/')[0]));
     } catch { return new Set(); }
   }
@@ -10027,8 +10010,6 @@ __factories["./src/nudge"] = function(module, exports) {
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
 
 const RUN_THRESHOLD = 10;
 const SUCCESS_THRESHOLD = 8;
@@ -10038,7 +10019,7 @@ function usagePath(cwd) { return path.join(cwd, '.context', 'usage.json'); }
 function defaultUsage() {
   return {
     totalRuns: 0, successfulRuns: 0, squeezeOffered: 0, squeezeAccepted: 0,
-    starNudgeShown: false, machineId: '', firstRunDate: null, lastRunDate: null,
+    starNudgeShown: false, firstRunDate: null, lastRunDate: null,
   };
 }
 
@@ -10091,9 +10072,6 @@ function checkStarNudge(cwd, runSuccess, opts = {}) {
   const today = opts.today || new Date().toISOString().slice(0, 10);
   if (!usage.firstRunDate) usage.firstRunDate = today;
   usage.lastRunDate = today;
-  if (!usage.machineId) {
-    try { usage.machineId = 'sha256-' + crypto.createHash('sha256').update(os.hostname()).digest('hex').slice(0, 16); } catch (_) {}
-  }
 
   let nudged = false;
   if (!usage.starNudgeShown && usage.totalRuns >= RUN_THRESHOLD && usage.successfulRuns >= SUCCESS_THRESHOLD) {
@@ -10956,9 +10934,20 @@ module.exports = { verify, buildSymbolSet, loadDeps, loadScripts, isTestPath };
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execSync } = require('child_process');
 
-const VERSION = '7.0.0';
+// Shell-free subprocess helpers. execFileSync runs the binary directly (never
+// /bin/sh), so there is no shell-injection surface and no "Shell access"
+// capability for supply-chain scanners. stderr is discarded by default.
+function __git(args, opts = {}) {
+  const { execFileSync } = require('child_process');
+  return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], ...opts });
+}
+function __tryGit(args, opts = {}) {
+  try { return __git(args, opts).toString().trim(); }
+  catch (_) { return ''; }
+}
+
+const VERSION = '7.0.1';
 const MARKER = '\n\n## Auto-generated signatures\n<!-- Updated by gen-context.js -->\n';
 
 function requireSourceOrBundled(key) {
@@ -11340,9 +11329,7 @@ function applyTokenBudget(fileEntries, maxTokens) {
 function getRecentlyCommittedFiles(cwd, count) {
   const n = count || 10;
   try {
-    const out = execSync(`git log --name-only --format="" -n ${n}`, {
-      cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const out = __git(['log', '--name-only', '--format=', '-n', String(n)], { cwd });
     return new Set(out.split('\n').map((f) => f.trim()).filter(Boolean).map((f) => path.resolve(cwd, f)));
   } catch (_) {
     return new Set();
@@ -11354,8 +11341,8 @@ function getRecentlyCommittedFiles(cwd, count) {
 // ---------------------------------------------------------------------------
 function getDiffFiles(cwd, stagedOnly) {
   try {
-    const cmd = stagedOnly ? 'git diff --cached --name-only' : 'git diff HEAD --name-only';
-    const out = execSync(cmd, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    const gitArgs = stagedOnly ? ['diff', '--cached', '--name-only'] : ['diff', 'HEAD', '--name-only'];
+    const out = __git(gitArgs, { cwd });
     return new Set(
       out.split('\n').map((f) => f.trim()).filter(Boolean).map((f) => path.resolve(cwd, f))
     );
@@ -11453,17 +11440,13 @@ function buildChangesSection(cwd, config, fileEntries) {
   try {
     let range = `HEAD~${n}..HEAD`;
     try {
-      execSync(`git rev-parse --verify HEAD~${n} 2>/dev/null`, {
-        cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-      });
+      __git(['rev-parse', '--verify', `HEAD~${n}`], { cwd });
     } catch (_) {
       // HEAD~n doesn't exist (shallow repo) — clamp to deepest valid ancestor
       let best = 1;
       for (let k = n - 1; k >= 2; k--) {
         try {
-          execSync(`git rev-parse --verify HEAD~${k} 2>/dev/null`, {
-            cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-          });
+          __git(['rev-parse', '--verify', `HEAD~${k}`], { cwd });
           best = k;
           break;
         } catch (_) {}
@@ -11471,15 +11454,11 @@ function buildChangesSection(cwd, config, fileEntries) {
       range = `HEAD~${best}..HEAD`;
     }
 
-    const namesOnly = execSync(`git diff ${range} --name-only 2>/dev/null`, {
-      cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const namesOnly = __git(['diff', range, '--name-only'], { cwd });
     const changed = new Set(namesOnly.split('\n').map((l) => l.trim()).filter(Boolean).map((f) => path.resolve(cwd, f)));
     if (changed.size === 0) return [];
 
-    const timeAgo = execSync('git log -1 --format="%cr" 2>/dev/null', {
-      cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+    const timeAgo = __git(['log', '-1', '--format=%cr'], { cwd }).trim();
 
     const lines = [`## changes (last ${n} commits — ${timeAgo})`, '```'];
     let hasDelta = false;
@@ -11488,9 +11467,7 @@ function buildChangesSection(cwd, config, fileEntries) {
       const rel = path.relative(cwd, entry.filePath);
       let diff = '';
       try {
-        diff = execSync(`git diff ${range} -- "${rel}" 2>/dev/null`, {
-          cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-        });
+        diff = __git(['diff', range, '--', rel], { cwd });
       } catch (_) {
         continue;
       }
@@ -12470,6 +12447,23 @@ function runGenerate(cwd, config, reportMode, reportJson = false) {
     }
   }
 
+  // v7.0.1: count a plain context-generation run for the one-time star nudge.
+  // Most users only ever run `sigmap` to build the context file — count that too,
+  // not just ask/squeeze. Guard so a monorepo (many runGenerate calls per process)
+  // counts as a single run. Interactive only — silent under --json/--report or non-TTY.
+  if (!global.__sigmapGenCounted) {
+    global.__sigmapGenCounted = true;
+    try {
+      const { checkStarNudge } = requireSourceOrBundled('./src/nudge');
+      const showNudge = !!process.stderr.isTTY
+        && !reportJson
+        && !process.argv.includes('--json')
+        && !process.argv.includes('--report')
+        && !process.argv.includes('--quiet');
+      checkStarNudge(global.__sigmapRootCwd || cwd, true, { silent: !showNudge });
+    } catch (_) {}
+  }
+
   return result;
 }
 
@@ -12651,11 +12645,7 @@ function suggestTool(description) {
 
 function resolveProjectRoot(startDir) {
   try {
-    const gitRoot = execSync('git rev-parse --show-toplevel', {
-      cwd: startDir,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    const gitRoot = __git(['rev-parse', '--show-toplevel'], { cwd: startDir }).trim();
     if (gitRoot) return gitRoot;
   } catch (_) {}
   return startDir;
@@ -12926,8 +12916,7 @@ function buildIndexContext(ranked, cwd) {
 
 function computeCurrentRisk(cwd) {
   try {
-    const { execSync } = require('child_process');
-    const out = execSync('git diff --name-only HEAD', { cwd, timeout: 3000, encoding: 'utf8' });
+    const out = __git(['diff', '--name-only', 'HEAD'], { cwd, timeout: 3000 });
     const count = out.trim().split('\n').filter(Boolean).length;
     if (count === 0) return 'NONE';
     if (count <= 3)  return 'LOW';
@@ -13011,6 +13000,9 @@ function main() {
   const cwd = cwdFlag
     ? path.resolve(invokedFrom, cwdFlag)
     : resolveProjectRoot(invokedFrom);
+  // v7.0.1: remember the invocation root so the generation star-nudge always tracks
+  // usage at the repo root, even when runGenerate is called per-package (monorepo).
+  global.__sigmapRootCwd = cwd;
   const scriptPath = process.argv[1] || path.join(invokedFrom, 'gen-context.js');
 
   if (cwdFlag) {
@@ -13286,9 +13278,8 @@ function main() {
     const short = args.includes('--short');
     let msg = '', diff = '';
     try {
-      const { execSync } = require('child_process');
-      msg  = execSync('git log -1 --format=%s',        { cwd, timeout: 3000, encoding: 'utf8' }).trim();
-      diff = execSync('git diff --cached --name-only',  { cwd, timeout: 3000, encoding: 'utf8' });
+      msg  = __git(['log', '-1', '--format=%s'],        { cwd, timeout: 3000 }).trim();
+      diff = __git(['diff', '--cached', '--name-only'], { cwd, timeout: 3000 });
     } catch (_) {}
 
     let profile = 'default';
@@ -13309,13 +13300,15 @@ function main() {
 
   // v4.2: `sigmap compare` — human-readable benchmark CLI
   if (args[0] === 'compare') {
-    const { execSync } = require('child_process');
+    const { execFileSync } = require('child_process');
     console.log('[sigmap] Running comparison benchmark (this may take ~30s)...\n');
 
     let raw = '';
     try {
-      raw = execSync(
-        `node ${JSON.stringify(path.join(__dirname, 'scripts', 'run-retrieval-benchmark.mjs'))} --compare`,
+      // Shell-free: run the node binary directly with the script path as an argv.
+      raw = execFileSync(
+        process.execPath,
+        [path.join(__dirname, 'scripts', 'run-retrieval-benchmark.mjs'), '--compare'],
         { cwd, timeout: 90_000, encoding: 'utf8' }
       );
     } catch (e) { raw = (e && e.stdout) ? e.stdout : ''; }
@@ -13372,9 +13365,13 @@ function main() {
     console.log(shareText);
 
     try {
-      const { execSync } = require('child_process');
-      const clipCmd = process.platform === 'darwin' ? 'pbcopy' : 'xclip -selection clipboard';
-      execSync(`printf '%s' ${JSON.stringify(shareText)} | ${clipCmd}`, { timeout: 2000 });
+      // Shell-free: spawn the clipboard binary directly and write the text to its
+      // stdin — no shell, no pipe, no string-built command.
+      const { execFileSync } = require('child_process');
+      const [clipBin, clipArgs] = process.platform === 'darwin'
+        ? ['pbcopy', []]
+        : ['xclip', ['-selection', 'clipboard']];
+      execFileSync(clipBin, clipArgs, { input: shareText, timeout: 2000 });
       console.log('\n[sigmap] Copied to clipboard.');
     } catch (_) {}
 
@@ -13955,16 +13952,16 @@ function main() {
   // `sigmap status` — environment / repo state at a glance.
   if (args[0] === 'status') {
     const jsonOut = args.includes('--json');
-    const gitOpts = { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] };
+    const gitOpts = { cwd };
     const st = { branch: null, dirty: 0, lastIndex: null, indexVersion: null, indexFiles: null, changedSinceIndex: null, notes: 0, lastNote: null };
 
-    try { st.branch = execSync('git rev-parse --abbrev-ref HEAD', gitOpts).trim() || null; } catch (_) {}
+    st.branch = __tryGit(['rev-parse', '--abbrev-ref', 'HEAD'], gitOpts) || null;
     // Fallback for an unborn branch (fresh repo, no commits yet).
     if (!st.branch || st.branch === 'HEAD') {
-      try { st.branch = execSync('git symbolic-ref --short HEAD', gitOpts).trim() || st.branch; } catch (_) {}
+      st.branch = __tryGit(['symbolic-ref', '--short', 'HEAD'], gitOpts) || st.branch;
     }
     try {
-      const porcelain = execSync('git status --porcelain', gitOpts).trim();
+      const porcelain = __git(['status', '--porcelain'], gitOpts).trim();
       st.dirty = porcelain ? porcelain.split('\n').filter(Boolean).length : 0;
     } catch (_) {}
 
@@ -13983,7 +13980,7 @@ function main() {
     if (st.lastIndex) {
       try {
         const since = Date.parse(st.lastIndex);
-        const tracked = execSync('git ls-files', gitOpts).split('\n').filter(Boolean);
+        const tracked = __git(['ls-files'], gitOpts).split('\n').filter(Boolean);
         let changed = 0;
         for (const f of tracked.slice(0, 5000)) {
           try { if (fs.statSync(path.join(cwd, f)).mtimeMs > since) changed++; } catch (_) {}

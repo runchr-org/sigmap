@@ -15,7 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { tryGit } = require('../util/git');
 
 const NOTES_FILE = path.join('.context', 'notes.ndjson');
 const MAX_TEXT = 2000;
@@ -25,13 +25,7 @@ function notesPath(cwd) {
 }
 
 function _currentBranch(cwd) {
-  try {
-    return execSync('git rev-parse --abbrev-ref HEAD', {
-      cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim() || null;
-  } catch (_) {
-    return null;
-  }
+  return tryGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd }) || null;
 }
 
 /**

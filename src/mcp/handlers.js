@@ -2,7 +2,7 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { git } = require('../util/git');
 
 const CONTEXT_FILE = path.join('.github', 'copilot-instructions.md');
 const CONTEXT_COLD_FILE = path.join('.github', 'context-cold.md');
@@ -149,19 +149,14 @@ function createCheckpoint(args, cwd) {
   // ── Git info ────────────────────────────────────────────────────────────
   lines.push('## Git state');
   try {
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', {
-      cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
+    const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd }).trim();
     lines.push(`**Branch:** ${branch}`);
   } catch (_) {
     lines.push('**Branch:** (not a git repo)');
   }
 
   try {
-    const log = execSync(
-      'git log --oneline -5 --no-decorate 2>/dev/null',
-      { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-    ).trim();
+    const log = git(['log', '--oneline', '-5', '--no-decorate'], { cwd }).trim();
     if (log) {
       lines.push('');
       lines.push('**Recent commits:**');

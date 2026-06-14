@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-description: SigMap version history and roadmap. From v0.0 to v7.0.0, with recent releases adding Squeeze input minimization with symbol enrichment, full-signatures-under-budget, source-of-truth llms.txt, the verify-ai-output Hallucination Guard, and Memory tools (note, status, read_memory MCP tool).
+description: SigMap version history and roadmap. From v0.0 to v7.0.1, with recent releases adding supply-chain hardening (zero system-shell access), Squeeze input minimization with symbol enrichment, full-signatures-under-budget, source-of-truth llms.txt, the verify-ai-output Hallucination Guard, and Memory tools (note, status, read_memory MCP tool).
 head:
   - - meta
     - property: og:title
@@ -20,9 +20,9 @@ head:
 ---
 # Roadmap
 
-Sixty versions shipped. MIT open source from day one.
+Sixty-one versions shipped. MIT open source from day one.
 
-**Stats:** 97.0% overall token reduction · 984 tests passing · 11 MCP tools · 29 languages · 17-language source resolver · 0 npm deps
+**Stats:** 97.0% overall token reduction · 988 tests passing · 11 MCP tools · 29 languages · 17-language source resolver · 0 npm deps
 
 ## Token reduction by version
 
@@ -825,6 +825,16 @@ Two milestones in one release. **`verify-ai-output` Reliable MVP** (#232) grows 
 **Tags:** `verify-ai-output` · `fake-test-file` · `fake-npm-script` · `closest-match` · `--report` · `note` · `status` · `read_memory` · `11 MCP tools` · `PR #232` · `PR #233`
 
 **Impact:** 5-detector Hallucination Guard + heuristic suggestions; 11 MCP tools (was 10); 42 new tests (29 verify + 13 memory); 949 tests passing.
+
+---
+
+### v7.0.1 — Supply-chain hardening; importable core; wider star nudge ✓ (2026-06-14)
+
+**Patch release — security & package hygiene.** Every `child_process.execSync` call (which runs through `/bin/sh -c`) was converted to shell-free `execFileSync` with an arguments array — several had previously interpolated values into the command string (`git diff ${range}`, `HEAD~${n}`, `printf '%s' … | ${clipCmd}`, `node -e "…http.get…"`), a real shell-injection surface. A new `src/util/git.js` (`git()`/`tryGit()`) centralizes shell-free git; the `extends` config fetch passes the URL as an argv, `compare` spawns node by argv, and clipboard copy writes via stdin. Net: **zero `execSync`/`exec`/`shell:true` in the published surface**, clearing Socket's "Shell access" capability alert (#252). Also: `package.json` `main` now points at the importable core API (`require('sigmap')` no longer runs the CLI; Bundlephobia sees the real zero-dep library), the star nudge counts plain `sigmap` runs (not just `ask`/`squeeze`) so context-only users reach it (#251), and the unused `machineId = sha256(os.hostname())` fingerprint was removed from `usage.json` (#252).
+
+**Tags:** `shell-free` · `execFileSync` · `no-shell-access` · `src/util/git.js` · `main→core` · `star-nudge` · `no-fingerprint` · `supply-chain` · `#250` · `PR #251` · `PR #252`
+
+**Impact:** Socket "Shell access" + "AI-detected risk" alerts removed (Supply Chain Security 75 → 100 after publish); injection vectors eliminated; importable core API; 988 tests passing.
 
 ---
 

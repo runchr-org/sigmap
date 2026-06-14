@@ -10,6 +10,20 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [7.0.1] — 2026-06-14
+
+Patch release — supply-chain hardening and package hygiene, plus a wider star nudge.
+
+### Fixed
+- **Eliminated system-shell access (#252):** every `child_process.execSync` call (which runs via `/bin/sh -c`) was converted to shell-free `execFileSync` with an arguments array. Several commands had previously interpolated values into the command string (`git diff ${range}`, `HEAD~${n}`, `printf '%s' … | ${clipCmd}`, `node -e "…http.get…"`) — a real shell-injection surface. New `src/util/git.js` (`git()`/`tryGit()`) centralizes shell-free git; the `extends` config fetch passes the URL as an argv to node; `compare` spawns node by argv; clipboard copy writes via stdin. Net: zero `execSync`/`exec`/`shell:true` in the published surface, which clears Socket's "Shell access" capability alert.
+
+### Changed
+- **Star nudge now counts plain `sigmap` runs (#251):** the one-time GitHub-star nudge previously only counted `ask`/`squeeze`. Users who only run `sigmap` to generate the context file now also reach the 10-run threshold. Counted once per process at the end of generation (monorepo-safe, tracked at the repo root); interactive-only — silent under `--json`/`--report`/`--quiet`/non-TTY.
+- **`main` points at the importable core (#252):** `package.json` `main` changed from the CLI bundle (`gen-context.js`, which runs `main()` + exits on `require`) to `packages/core/index.js`, matching `exports["."]`. Bundlephobia and legacy resolvers now see the real zero-dep API.
+- **Removed unused device fingerprint (#252):** the star nudge no longer records `machineId = sha256(os.hostname())` in `.context/usage.json` — it was never read or transmitted. Dropped the now-unused `os`/`crypto` requires.
+
+---
+
 ## [7.0.0] — 2026-06-14
 
 Major release — **Squeeze** makes `ask` minimize pasted input by default, a behavioral change to the core command.

@@ -1,14 +1,13 @@
 'use strict';
 const path = require('path');
 const fs   = require('fs');
-const { execSync } = require('child_process');
+const { tryGit } = require('../util/git');
 module.exports = { format, outputPath };
 
 function outputPath(cwd) { return path.join(cwd, 'llms.txt'); }
 
 function getShortCommit(cwd) {
-  try { return execSync('git rev-parse --short HEAD', { cwd, timeout: 2000 }).toString().trim(); }
-  catch (_) { return ''; }
+  return tryGit(['rev-parse', '--short', 'HEAD'], { cwd, timeout: 2000 });
 }
 
 function detectVersion(cwd) {

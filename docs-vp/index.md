@@ -78,9 +78,9 @@ features:
 
 <div style="max-width:840px;margin:0 auto;padding:18px 24px 0;text-align:center">
 <div style="display:inline-flex;flex-wrap:wrap;gap:.5rem;justify-content:center;background:var(--vp-c-brand-soft,#ede9fe);border:1px solid rgba(124,106,247,.25);border-radius:999px;padding:.55rem .9rem;font-size:.9rem;color:var(--vp-c-text-1)">
-  <span><strong>Release:</strong> v7.0.0</span>
+  <span><strong>Release:</strong> v7.0.1</span>
   <span>·</span>
-  <span>Squeeze — minimize pasted stacktraces/logs/JSON with symbol enrichment, before they hit the model</span>
+  <span>Supply-chain hardening — zero system-shell access (shell-free subprocess calls), importable core API, no device fingerprint</span>
 </div>
 <div style="margin-top:.4rem;display:inline-flex;flex-wrap:wrap;gap:.5rem;justify-content:center;background:var(--vp-c-default-soft,#f3f4f6);border:1px solid rgba(0,0,0,.08);border-radius:999px;padding:.55rem .9rem;font-size:.9rem;color:var(--vp-c-text-2)">
   <span><strong>Benchmark:</strong> sigmap-v7.0-main</span>
@@ -176,7 +176,7 @@ See the full [end-to-end walkthrough](/guide/walkthrough) to watch this in actio
 | Overall token reduction | — | **97.0%** |
 | GPT-4o overflow repos | 16/21 | **0/21** |
 
-Latest saved benchmark run: **2026-06-14 (v7.0.0)**.
+Latest saved benchmark run: **2026-06-14 (v7.0.1)**.
 
 </div>
 

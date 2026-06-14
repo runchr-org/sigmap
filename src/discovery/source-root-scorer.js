@@ -2,7 +2,7 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { git } = require('../util/git');
 
 const CODE_EXTS = new Set([
   '.js','.mjs','.cjs','.ts','.tsx','.jsx',
@@ -35,7 +35,7 @@ const ROOT_ENTRYPOINTS = {
 
 function getRecentlyChangedDirs(cwd) {
   try {
-    const out = execSync('git log --name-only --format="" HEAD~10 2>/dev/null', { cwd, timeout: 3000 }).toString();
+    const out = git(['log', '--name-only', '--format=', 'HEAD~10'], { cwd, timeout: 3000 }).toString();
     return new Set(out.split('\n').filter(Boolean).map(f => f.split('/')[0]));
   } catch { return new Set(); }
 }
