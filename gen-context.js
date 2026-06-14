@@ -10027,8 +10027,6 @@ __factories["./src/nudge"] = function(module, exports) {
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
 
 const RUN_THRESHOLD = 10;
 const SUCCESS_THRESHOLD = 8;
@@ -10038,7 +10036,7 @@ function usagePath(cwd) { return path.join(cwd, '.context', 'usage.json'); }
 function defaultUsage() {
   return {
     totalRuns: 0, successfulRuns: 0, squeezeOffered: 0, squeezeAccepted: 0,
-    starNudgeShown: false, machineId: '', firstRunDate: null, lastRunDate: null,
+    starNudgeShown: false, firstRunDate: null, lastRunDate: null,
   };
 }
 
@@ -10091,9 +10089,6 @@ function checkStarNudge(cwd, runSuccess, opts = {}) {
   const today = opts.today || new Date().toISOString().slice(0, 10);
   if (!usage.firstRunDate) usage.firstRunDate = today;
   usage.lastRunDate = today;
-  if (!usage.machineId) {
-    try { usage.machineId = 'sha256-' + crypto.createHash('sha256').update(os.hostname()).digest('hex').slice(0, 16); } catch (_) {}
-  }
 
   let nudged = false;
   if (!usage.starNudgeShown && usage.totalRuns >= RUN_THRESHOLD && usage.successfulRuns >= SUCCESS_THRESHOLD) {

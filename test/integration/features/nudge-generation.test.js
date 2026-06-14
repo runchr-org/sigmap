@@ -39,7 +39,7 @@ function seedUsage(d, totalRuns) {
   fs.mkdirSync(path.join(d, '.context'), { recursive: true });
   fs.writeFileSync(path.join(d, '.context', 'usage.json'), JSON.stringify({
     totalRuns, successfulRuns: totalRuns, squeezeOffered: 0, squeezeAccepted: 0,
-    starNudgeShown: false, machineId: '', firstRunDate: '2026-06-13', lastRunDate: '2026-06-13',
+    starNudgeShown: false, firstRunDate: '2026-06-13', lastRunDate: '2026-06-13',
   }));
 }
 
