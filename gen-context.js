@@ -8928,6 +8928,20 @@ __factories["./src/discovery/source-root-registry"] = function(module, exports) 
   module.exports = { REGISTRY };
 };
 
+// ── ./src/util/git ──
+__factories["./src/util/git"] = function(module, exports) {
+  'use strict';
+  const { execFileSync } = require('child_process');
+  function git(args, opts = {}) {
+    return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], ...opts });
+  }
+  function tryGit(args, opts = {}) {
+    try { return git(args, opts).toString().trim(); }
+    catch (_) { return ''; }
+  }
+  module.exports = { git, tryGit };
+};
+
 // ── ./src/discovery/sigmapignore ──
 __factories["./src/discovery/sigmapignore"] = function(module, exports) {
   'use strict';
