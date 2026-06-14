@@ -651,7 +651,7 @@ sigmap share
 ```
 Generated with SigMap — zero-dependency AI context engine
 97.0% fewer tokens · 75.6% retrieval hit@5 · 39.4% fewer prompts
-https://sigmap.dev
+https://sigmap.io
 [sigmap] Copied to clipboard.
 ```
 
