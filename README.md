@@ -245,6 +245,14 @@ If SigMap saves you context or API spend, a ⭐ on [GitHub](https://github.com/m
 
 ---
 
+## Sponsor
+
+SigMap is built and maintained by one developer, kept **zero-dependency**, offline, and free. If it saves your team context or API spend, sponsoring keeps it that way — and funds the benchmark CI, the `sigmap.io` domain, and ongoing supply-chain hardening.
+
+💜 **[Become a sponsor →](https://github.com/sponsors/manojmallick)** · see **[SPONSOR.md](SPONSOR.md)** for tiers and exactly where your support goes. Any amount helps — even $1/mo — and a ⭐ or a share counts too.
+
+---
+
 ## Contributing
 
 SigMap welcomes contributions! 
