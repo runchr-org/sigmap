@@ -12470,6 +12470,23 @@ function runGenerate(cwd, config, reportMode, reportJson = false) {
     }
   }
 
+  // v7.0.1: count a plain context-generation run for the one-time star nudge.
+  // Most users only ever run `sigmap` to build the context file — count that too,
+  // not just ask/squeeze. Guard so a monorepo (many runGenerate calls per process)
+  // counts as a single run. Interactive only — silent under --json/--report or non-TTY.
+  if (!global.__sigmapGenCounted) {
+    global.__sigmapGenCounted = true;
+    try {
+      const { checkStarNudge } = requireSourceOrBundled('./src/nudge');
+      const showNudge = !!process.stderr.isTTY
+        && !reportJson
+        && !process.argv.includes('--json')
+        && !process.argv.includes('--report')
+        && !process.argv.includes('--quiet');
+      checkStarNudge(global.__sigmapRootCwd || cwd, true, { silent: !showNudge });
+    } catch (_) {}
+  }
+
   return result;
 }
 
@@ -13011,6 +13028,9 @@ function main() {
   const cwd = cwdFlag
     ? path.resolve(invokedFrom, cwdFlag)
     : resolveProjectRoot(invokedFrom);
+  // v7.0.1: remember the invocation root so the generation star-nudge always tracks
+  // usage at the repo root, even when runGenerate is called per-package (monorepo).
+  global.__sigmapRootCwd = cwd;
   const scriptPath = process.argv[1] || path.join(invokedFrom, 'gen-context.js');
 
   if (cwdFlag) {
