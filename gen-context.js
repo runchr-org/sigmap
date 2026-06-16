@@ -14914,7 +14914,8 @@ function main() {
       console.log(`  p50 token count : ${result.p50TokenCount}`);
       console.log(`  p95 token count : ${result.p95TokenCount}`);
       console.log(`  overbudget streak: ${result.overBudgetStreak}`);
-      console.log(`  extractor cover.: ${result.extractorCoverage}%`);
+      console.log(`  repo languages  : ${result.extractorCoverage}% of supported langs used here (informational — not scored)`);
+      console.log(`  ${'score basis'.padEnd(16)}: staleness · token reduction · over-budget rate`);
     }
     process.exit(0);
   }
