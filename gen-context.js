@@ -6254,7 +6254,7 @@ const { readContext, searchSignatures, getMap, createCheckpoint, getRouting, exp
 
 const SERVER_INFO = {
   name: 'sigmap',
-  version: '7.1.0',
+  version: '7.2.0',
   description: 'SigMap MCP server — code signatures on demand',
 };
 
@@ -11499,7 +11499,7 @@ function __tryGit(args, opts = {}) {
   catch (_) { return ''; }
 }
 
-const VERSION = '7.1.0';
+const VERSION = '7.2.0';
 const MARKER = '\n\n## Auto-generated signatures\n<!-- Updated by gen-context.js -->\n';
 
 function requireSourceOrBundled(key) {
@@ -14914,7 +14914,8 @@ function main() {
       console.log(`  p50 token count : ${result.p50TokenCount}`);
       console.log(`  p95 token count : ${result.p95TokenCount}`);
       console.log(`  overbudget streak: ${result.overBudgetStreak}`);
-      console.log(`  extractor cover.: ${result.extractorCoverage}%`);
+      console.log(`  repo languages  : ${result.extractorCoverage}% of supported langs used here (informational — not scored)`);
+      console.log(`  ${'score basis'.padEnd(16)}: staleness · token reduction · over-budget rate`);
     }
     process.exit(0);
   }

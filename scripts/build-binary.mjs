@@ -50,32 +50,12 @@ log('── Phase A: build standalone binary ───────────�
 
 // 1. Pre-flight: ensure all src/ modules are present in gen-context.js __factories
 {
-  const { readdirSync, readFileSync } = await import('fs');
-  const { join: pjoin } = await import('path');
-  const bundle = readFileSync(join(ROOT, 'gen-context.js'), 'utf8');
-
-  function walkSrc(dir) {
-    const entries = readdirSync(dir, { withFileTypes: true });
-    const files = [];
-    for (const e of entries) {
-      const full = pjoin(dir, e.name);
-      if (e.isDirectory()) files.push(...walkSrc(full));
-      else if (e.isFile() && e.name.endsWith('.js')) files.push(full);
-    }
-    return files;
-  }
-
-  const srcDir = join(ROOT, 'src');
-  const missing = [];
-  for (const file of walkSrc(srcDir)) {
-    const key = './' + file.slice(ROOT.length).replace(/\.js$/, '').replace(/\\/g, '/');
-    if (!bundle.includes(`"${key}"`)) missing.push(key);
-  }
-
+  const { findMissingFactories } = await import('./check-bundle.mjs');
+  const missing = findMissingFactories(ROOT);
   if (missing.length > 0) {
     console.error('\nERROR: The following src/ modules are missing from gen-context.js __factories:');
     for (const m of missing) console.error(`  ${m}`);
-    console.error('\nAdd them to gen-context.js before building the binary.');
+    console.error('\nRun `node scripts/check-bundle.mjs --fix` to add them, then commit gen-context.js.');
     process.exit(1);
   }
   ok('bundle pre-flight: all src/ modules present in gen-context.js');

@@ -18,6 +18,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      - name: Bundle integrity (src/ modules present in gen-context.js __factories)
+        run: node scripts/check-bundle.mjs
       - name: Run unit tests
         run: node test/run.js
       - name: Run integration tests
