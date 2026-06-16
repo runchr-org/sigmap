@@ -7023,12 +7023,15 @@ __factories["./src/tracking/logger"] = function(module, exports) {
    *   config.tracking: true   (gen-context.config.json)
    *   --track CLI flag
    */
-  
+
   const fs = require('fs');
   const path = require('path');
-  
+
   const LOG_FILE = path.join('.context', 'usage.ndjson');
-  
+  // Dedicated log for the `gain` dashboard (extended schema). Kept separate from
+  // usage.ndjson so the legacy health/nudge history never collides with it.
+  const GAIN_FILE = path.join('.context', 'gain.ndjson');
+
   /**
    * Append one run entry to the usage log.
    * @param {object} entry - Run metrics from runGenerate()
@@ -7039,7 +7042,7 @@ __factories["./src/tracking/logger"] = function(module, exports) {
       const logPath = path.join(cwd, LOG_FILE);
       const dir = path.dirname(logPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  
+
       const record = {
         ts: new Date().toISOString(),
         version: entry.version || '0.9.0',
@@ -7053,14 +7056,14 @@ __factories["./src/tracking/logger"] = function(module, exports) {
         overBudget: entry.overBudget || false,
         budgetLimit: entry.budgetLimit || 6000,
       };
-  
+
       fs.appendFileSync(logPath, JSON.stringify(record) + '\n', 'utf8');
     } catch (err) {
       // Never crash the main process — tracking is optional
       process.stderr.write(`[sigmap] tracking: could not write log: ${err.message}\n`);
     }
   }
-  
+
   /**
    * Read and parse all usage log entries.
    * @param {string} cwd - Project root (absolute path)
@@ -7082,7 +7085,26 @@ __factories["./src/tracking/logger"] = function(module, exports) {
       return [];
     }
   }
-  
+
+  /**
+   * Read and parse all `gain` dashboard records (oldest first).
+   * @param {string} cwd
+   * @returns {object[]}
+   */
+  function readGainLog(cwd) {
+    try {
+      const logPath = path.join(cwd, GAIN_FILE);
+      if (!fs.existsSync(logPath)) return [];
+      return fs.readFileSync(logPath, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => { try { return JSON.parse(line); } catch (_) { return null; } })
+        .filter(Boolean);
+    } catch (_) {
+      return [];
+    }
+  }
+
   /**
    * Compute summary statistics from an array of log records.
    * @param {object[]} entries
@@ -7102,13 +7124,13 @@ __factories["./src/tracking/logger"] = function(module, exports) {
         overBudgetRuns: 0,
       };
     }
-  
+
     const reductions = entries.map((e) => e.reductionPct || 0);
     const finals = entries.map((e) => e.finalTokens || 0);
     const raws = entries.map((e) => e.rawTokens || 0);
-  
+
     const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
-  
+
     return {
       totalRuns: entries.length,
       avgReductionPct: parseFloat(avg(reductions).toFixed(1)),
@@ -7121,8 +7143,524 @@ __factories["./src/tracking/logger"] = function(module, exports) {
       overBudgetRuns: entries.filter((e) => e.overBudget).length,
     };
   }
+
+  /**
+   * Whether `gain` savings capture is enabled. Default: ON (privacy-safe,
+   * local-only, counts only — no paths, source, or query text). This is
+   * intentionally decoupled from the legacy `config.tracking` flag (which gates
+   * the usage.ndjson health log and defaults OFF). Opt out of gain capture via:
+   *   config.gainTracking === false   ·   --no-track   ·   SIGMAP_NO_TRACK=1
+   * @param {object} [config]
+   * @param {string[]} [argv]
+   * @returns {boolean}
+   */
+  function isTrackingEnabled(config, argv) {
+    const a = argv || (typeof process !== 'undefined' ? process.argv : []);
+    if (process.env && process.env.SIGMAP_NO_TRACK) return false;
+    if (a && a.includes('--no-track')) return false;
+    if (config && config.gainTracking === false) return false;
+    return true;
+  }
+
+  /**
+   * Append one operation to the usage log using the extended `gain` schema.
+   * Reuses the same NDJSON file as logRun and is tolerant of partial input.
+   * Never throws — tracking must never break the main process.
+   *
+   * @param {object} entry
+   * @param {string} entry.op             e.g. 'ask' | 'generate' | 'query' | 'mcp:get_map'
+   * @param {number} entry.baselineTokens whole-file / candidate baseline (counterfactual)
+   * @param {number} entry.actualTokens   tokens SigMap actually emitted
+   * @param {number} [entry.durationMs]
+   * @param {string} [entry.model]
+   * @param {string} [entry.version]
+   * @param {string} cwd
+   */
+  function recordUsage(entry, cwd) {
+    try {
+      const logPath = path.join(cwd, GAIN_FILE);
+      const dir = path.dirname(logPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+      const baseline = Math.max(0, Number(entry.baselineTokens) || 0);
+      const actual = Math.max(0, Number(entry.actualTokens) || 0);
+      const saved = Math.max(0, baseline - actual);
+      const record = {
+        ts: new Date().toISOString(),
+        v: entry.version || '0.9.0',
+        op: entry.op || 'generate',
+        baselineTokens: baseline,
+        actualTokens: actual,
+        savedTokens: saved,
+        savedPct: baseline > 0 ? parseFloat(((saved / baseline) * 100).toFixed(1)) : 0,
+        durationMs: Math.max(0, Math.round(Number(entry.durationMs) || 0)),
+        model: entry.model || null,
+        ok: entry.ok !== false,
+      };
+      fs.appendFileSync(logPath, JSON.stringify(record) + '\n', 'utf8');
+    } catch (err) {
+      // Never crash the main process — tracking is optional.
+      if (process.stderr) process.stderr.write(`[sigmap] tracking: could not write log: ${err.message}\n`);
+    }
+  }
+
+  module.exports = { logRun, recordUsage, readLog, readGainLog, summarize, isTrackingEnabled, GAIN_FILE };
   
-  module.exports = { logRun, readLog, summarize };
+};
+
+// ── ./src/tracking/pricing ──
+__factories["./src/tracking/pricing"] = function(module, exports) {
+  
+  /**
+   * SigMap pricing table — input-token $/Mtok assumptions for the `gain` dashboard.
+   *
+   * These are ASSUMPTIONS used only to translate "tokens saved" into an estimated
+   * dollar figure. They are deliberately conservative and configurable via
+   *   --model <name>   or   config.pricingModel
+   * The `gain` views always print the model + rate inline so the $ is never
+   * presented as exact. Zero npm dependencies.
+   */
+
+  // USD per 1,000,000 input tokens.
+  const PRICES = {
+    'claude-sonnet': 3.0,
+    'claude-opus': 15.0,
+    'claude-haiku': 0.8,
+    'gpt-4o': 2.5,
+    'gpt-4o-mini': 0.15,
+    'gemini-1.5-pro': 1.25,
+    'gemini-1.5-flash': 0.075,
+  };
+
+  const DEFAULT_MODEL = 'claude-sonnet';
+
+  /**
+   * Resolve a price (USD per token) for a model name.
+   * @param {string} [model]
+   * @returns {{ model: string, perMtok: number, perToken: number }}
+   */
+  function resolvePrice(model) {
+    const key = (model || DEFAULT_MODEL).toLowerCase();
+    const perMtok = PRICES[key] != null ? PRICES[key] : PRICES[DEFAULT_MODEL];
+    const resolved = PRICES[key] != null ? key : DEFAULT_MODEL;
+    return { model: resolved, perMtok, perToken: perMtok / 1_000_000 };
+  }
+
+  /** @returns {string[]} known model keys */
+  function listModels() {
+    return Object.keys(PRICES);
+  }
+
+  module.exports = { PRICES, DEFAULT_MODEL, resolvePrice, listModels };
+  
+};
+
+// ── ./src/tracking/aggregate ──
+__factories["./src/tracking/aggregate"] = function(module, exports) {
+  
+  /**
+   * SigMap usage aggregation for the `gain` dashboard.
+   *
+   * Pure, zero-dependency functions that turn raw NDJSON usage records into the
+   * totals / by-operation / time-bucket shapes the terminal renderer consumes.
+   *
+   * Tolerant of BOTH schemas:
+   *   - new:    { op, baselineTokens, actualTokens, savedTokens, savedPct, durationMs, model }
+   *   - legacy: { rawTokens, finalTokens, reductionPct }   (from logger.js v0.9)
+   *
+   * "saved" is a counterfactual estimate (baseline − actual), never a measured
+   * delta. Callers are responsible for labeling it as such in the UI.
+   */
+
+  const { resolvePrice } = __require('./src/tracking/pricing');
+
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+
+  /**
+   * Normalize one raw record into a canonical shape.
+   * @param {object} rec
+   */
+  function normalize(rec) {
+    const baseline = num(rec.baselineTokens != null ? rec.baselineTokens : rec.rawTokens);
+    const actual = num(rec.actualTokens != null ? rec.actualTokens : rec.finalTokens);
+    const saved = rec.savedTokens != null ? num(rec.savedTokens) : Math.max(0, baseline - actual);
+    const savedPct = rec.savedPct != null
+      ? num(rec.savedPct)
+      : rec.reductionPct != null
+        ? num(rec.reductionPct)
+        : baseline > 0 ? (saved / baseline) * 100 : 0;
+    return {
+      ts: rec.ts || null,
+      op: normalizeOp(rec.op),
+      baseline,
+      actual,
+      saved,
+      savedPct: clamp(savedPct, 0, 100),
+      durationMs: num(rec.durationMs),
+      model: rec.model || null,
+    };
+  }
+
+  function normalizeOp(op) {
+    if (!op) return 'generate';
+    return String(op);
+  }
+
+  function num(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  /**
+   * Parse a --since value into a cutoff Date (or null for "all time").
+   * Accepts: "7d", "30d", "12h", or an ISO date "2026-06-01".
+   * @param {string} since
+   * @param {number} [nowMs] - injectable clock for tests
+   * @returns {Date|null}
+   */
+  function parseSince(since, nowMs) {
+    if (!since) return null;
+    const now = nowMs != null ? nowMs : Date.now();
+    const rel = /^(\d+)([dhw])$/.exec(String(since).trim());
+    if (rel) {
+      const n = parseInt(rel[1], 10);
+      const unit = rel[2];
+      const ms = unit === 'h' ? 3.6e6 : unit === 'w' ? 6.048e8 : 8.64e7;
+      return new Date(now - n * ms);
+    }
+    const d = new Date(since);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  /**
+   * Bucket records by calendar granularity.
+   * @param {object[]} records - normalized records
+   * @param {'day'|'week'|'month'} granularity
+   * @returns {Array<{key,count,baseline,actual,saved,savedPct,ms}>} ascending by key
+   */
+  function bucketBy(records, granularity) {
+    const map = new Map();
+    for (const r of records) {
+      if (!r.ts) continue;
+      const key = bucketKey(r.ts, granularity);
+      if (!key) continue;
+      let b = map.get(key);
+      if (!b) { b = { key, count: 0, baseline: 0, actual: 0, saved: 0, ms: 0 }; map.set(key, b); }
+      b.count += 1;
+      b.baseline += r.baseline;
+      b.actual += r.actual;
+      b.saved += r.saved;
+      b.ms += r.durationMs;
+    }
+    return [...map.values()]
+      .map((b) => ({ ...b, savedPct: b.baseline > 0 ? clamp((b.saved / b.baseline) * 100, 0, 100) : 0 }))
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  }
+
+  function bucketKey(ts, granularity) {
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return null;
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    if (granularity === 'month') return `${y}-${m}`;
+    if (granularity === 'week') {
+      // ISO-ish: key by the Monday (UTC) of that week.
+      const tmp = new Date(Date.UTC(y, d.getUTCMonth(), d.getUTCDate()));
+      const dow = (tmp.getUTCDay() + 6) % 7; // 0 = Monday
+      tmp.setUTCDate(tmp.getUTCDate() - dow);
+      return `${tmp.getUTCFullYear()}-${String(tmp.getUTCMonth() + 1).padStart(2, '0')}-${String(tmp.getUTCDate()).padStart(2, '0')}`;
+    }
+    return `${y}-${m}-${day}`;
+  }
+
+  /**
+   * Full aggregation for the `gain` dashboard.
+   * @param {object[]} rawRecords
+   * @param {object} [opts]
+   * @param {string} [opts.model]   pricing model
+   * @param {string} [opts.since]   window filter
+   * @param {number} [opts.top]     limit byOp rows (0 = all)
+   * @param {number} [opts.nowMs]   injectable clock
+   * @returns {object}
+   */
+  function aggregate(rawRecords, opts = {}) {
+    const price = resolvePrice(opts.model);
+    const cutoff = parseSince(opts.since, opts.nowMs);
+
+    let records = (rawRecords || []).map(normalize);
+    if (cutoff) records = records.filter((r) => r.ts && new Date(r.ts) >= cutoff);
+
+    const totals = {
+      count: records.length,
+      baseline: 0,
+      actual: 0,
+      saved: 0,
+      totalMs: 0,
+      savedPct: 0,
+      avgMs: 0,
+      usdSaved: 0,
+      firstTs: null,
+      lastTs: null,
+    };
+
+    const opMap = new Map();
+    for (const r of records) {
+      totals.baseline += r.baseline;
+      totals.actual += r.actual;
+      totals.saved += r.saved;
+      totals.totalMs += r.durationMs;
+      if (r.ts) {
+        if (!totals.firstTs || r.ts < totals.firstTs) totals.firstTs = r.ts;
+        if (!totals.lastTs || r.ts > totals.lastTs) totals.lastTs = r.ts;
+      }
+      let o = opMap.get(r.op);
+      if (!o) { o = { op: r.op, count: 0, baseline: 0, saved: 0, ms: 0 }; opMap.set(r.op, o); }
+      o.count += 1;
+      o.baseline += r.baseline;
+      o.saved += r.saved;
+      o.ms += r.durationMs;
+    }
+
+    totals.savedPct = totals.baseline > 0 ? clamp((totals.saved / totals.baseline) * 100, 0, 100) : 0;
+    totals.avgMs = totals.count > 0 ? Math.round(totals.totalMs / totals.count) : 0;
+    totals.usdSaved = totals.saved * price.perToken;
+
+    let byOp = [...opMap.values()].map((o) => ({
+      op: o.op,
+      count: o.count,
+      saved: o.saved,
+      avgPct: o.baseline > 0 ? clamp((o.saved / o.baseline) * 100, 0, 100) : 0,
+      avgMs: o.count > 0 ? Math.round(o.ms / o.count) : 0,
+      usdSaved: o.saved * price.perToken,
+      sharePct: totals.saved > 0 ? (o.saved / totals.saved) * 100 : 0,
+    })).sort((a, b) => b.saved - a.saved);
+
+    if (opts.top && opts.top > 0) byOp = byOp.slice(0, opts.top);
+
+    return {
+      price,
+      totals,
+      byOp,
+      buckets: {
+        daily: bucketBy(records, 'day'),
+        weekly: bucketBy(records, 'week'),
+        monthly: bucketBy(records, 'month'),
+      },
+    };
+  }
+
+  module.exports = { aggregate, bucketBy, parseSince, normalize };
+  
+};
+
+// ── ./src/format/gain-terminal ──
+__factories["./src/format/gain-terminal"] = function(module, exports) {
+  
+  /**
+   * SigMap `gain` — terminal renderer.
+   *
+   * Zero-dependency ANSI dashboard for token savings. Honors NO_COLOR and
+   * non-TTY output (plain text for pipes / --json consumers elsewhere).
+   *
+   * "saved" is a counterfactual estimate (whole-file baseline − actual context),
+   * never a measured delta — the footer says so on every view.
+   */
+
+  const USE_COLOR = !process.env.NO_COLOR && process.stdout.isTTY;
+
+  const C = {
+    reset: USE_COLOR ? '\x1b[0m' : '',
+    dim: USE_COLOR ? '\x1b[2m' : '',
+    bold: USE_COLOR ? '\x1b[1m' : '',
+    green: USE_COLOR ? '\x1b[32m' : '',
+    yellow: USE_COLOR ? '\x1b[33m' : '',
+    red: USE_COLOR ? '\x1b[31m' : '',
+    cyan: USE_COLOR ? '\x1b[36m' : '',
+    gray: USE_COLOR ? '\x1b[90m' : '',
+  };
+
+  // ── formatters ───────────────────────────────────────────────────────────
+  function humanTokens(n) {
+    n = Number(n) || 0;
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return String(Math.round(n));
+  }
+
+  function fmtInt(n) {
+    return (Number(n) || 0).toLocaleString('en-US');
+  }
+
+  function fmtUSD(n) {
+    n = Number(n) || 0;
+    if (n >= 1000) return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    return '$' + n.toFixed(2);
+  }
+
+  function fmtDuration(ms) {
+    ms = Number(ms) || 0;
+    if (ms >= 3.6e6) return (ms / 3.6e6).toFixed(1) + 'h';
+    if (ms >= 60000) return (ms / 60000).toFixed(1) + 'm';
+    if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+    return Math.round(ms) + 'ms';
+  }
+
+  function fmtPct(p) {
+    return (Number(p) || 0).toFixed(1) + '%';
+  }
+
+  function colorPct(p, text) {
+    if (!USE_COLOR) return text;
+    const c = p >= 85 ? C.green : p >= 60 ? C.yellow : C.red;
+    return c + text + C.reset;
+  }
+
+  function pad(s, w, align) {
+    s = String(s);
+    const visible = s.replace(/\x1b\[[0-9;]*m/g, '');
+    const gap = Math.max(0, w - visible.length);
+    return align === 'right' ? ' '.repeat(gap) + s : s + ' '.repeat(gap);
+  }
+
+  /** Solid horizontal efficiency bar with a dotted remainder. */
+  function bar(pct, width) {
+    const filled = Math.round((clamp(pct, 0, 100) / 100) * width);
+    const solid = '█'.repeat(filled);
+    const rest = '░'.repeat(Math.max(0, width - filled));
+    return (USE_COLOR ? C.green : '') + solid + (USE_COLOR ? C.gray : '') + rest + C.reset;
+  }
+
+  /** Proportional impact bar (share of total saved). */
+  function impactBar(sharePct, width) {
+    const n = Math.max(1, Math.round((clamp(sharePct, 0, 100) / 100) * width));
+    return (USE_COLOR ? C.cyan : '') + '█'.repeat(n) + C.reset;
+  }
+
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  const rule = (w) => C.gray + '─'.repeat(w) + C.reset;
+
+  // ── views ──────────────────────────────────────────────────────────────
+  /**
+   * Render the global summary + by-operation table.
+   * @param {object} agg     output of aggregate()
+   * @param {object} [opts]  { version, scope }
+   * @returns {string}
+   */
+  function renderSummary(agg, opts = {}) {
+    const W = 74;
+    const t = agg.totals;
+    const L = [];
+    const scope = opts.scope || 'this repo';
+    const ver = opts.version ? `v${opts.version}` : '';
+
+    L.push('');
+    const heading = `⚡ SigMap — Token Savings (${scope})`;
+    L.push('  ' + C.bold + C.cyan + heading + C.reset +
+      pad(`${C.green}✓${C.reset} ${C.dim}${ver}${C.reset}`, W - heading.length, 'right'));
+    L.push('  ' + rule(W));
+    L.push('');
+
+    if (t.count === 0) {
+      L.push(`  ${C.yellow}No usage recorded yet.${C.reset}`);
+      L.push(`  ${C.dim}Run a few queries (sigmap ask "...") or seed a demo:${C.reset}`);
+      L.push(`  ${C.dim}  node scripts/gain.mjs --demo${C.reset}`);
+      L.push('');
+      return L.join('\n');
+    }
+
+    const label = (k) => C.dim + pad(k, 21) + C.reset;
+    L.push('  ' + label('Total operations') + ': ' + C.bold + fmtInt(t.count) + C.reset);
+    L.push('  ' + label('Whole-file baseline') + ': ' + humanTokens(t.baseline) + ' tok' +
+      `   ${C.dim}← est. cost of feeding full files${C.reset}`);
+    L.push('  ' + label('SigMap context') + ': ' + humanTokens(t.actual) + ' tok');
+    L.push('  ' + label('Tokens saved') + ': ' + C.bold + humanTokens(t.saved) + C.reset +
+      '  (' + colorPct(t.savedPct, fmtPct(t.savedPct)) + ')');
+    L.push('  ' + label('Est. money saved') + ': ' + C.bold + C.green + fmtUSD(t.usdSaved) + C.reset +
+      `   ${C.dim}(${agg.price.model} input @ $${agg.price.perMtok}/M · --model to change)${C.reset}`);
+    L.push('  ' + label('Avg latency') + ': ' + fmtDuration(t.avgMs) + ' / op' +
+      `   ${C.dim}(local, no API round-trip)${C.reset}`);
+    L.push('');
+    L.push('  ' + label('Efficiency') + ': ▕' + bar(t.savedPct, 30) + '▏  ' +
+      colorPct(t.savedPct, C.bold + fmtPct(t.savedPct) + C.reset));
+    L.push('');
+
+    // By operation table
+    L.push(`  ${C.bold}By operation${C.reset}`);
+    L.push('  ' + rule(W));
+    L.push('  ' + C.dim +
+      pad('#', 3) + pad('Operation', 24) + pad('Count', 8, 'right') +
+      pad('Saved', 9, 'right') + pad('Avg%', 8, 'right') + pad('Time', 8, 'right') +
+      '  Impact' + C.reset);
+    agg.byOp.forEach((o, i) => {
+      L.push('  ' +
+        pad(`${i + 1}.`, 3) +
+        pad(o.op, 24) +
+        pad(fmtInt(o.count), 8, 'right') +
+        pad(humanTokens(o.saved), 9, 'right') +
+        pad(colorPct(o.avgPct, fmtPct(o.avgPct)), 8, 'right') +
+        pad(fmtDuration(o.avgMs), 8, 'right') +
+        '  ' + impactBar(o.sharePct, 12));
+    });
+    L.push('  ' + rule(W));
+    L.push(`  ${C.dim}saved = baseline − actual · estimated vs whole-file reads · local-only${C.reset}`);
+    L.push('');
+    return L.join('\n');
+  }
+
+  /**
+   * Render daily / weekly / monthly trend tables.
+   * @param {object} agg
+   * @returns {string}
+   */
+  function renderBreakdown(agg) {
+    const L = [];
+    if (agg.totals.count === 0) return renderSummary(agg);
+
+    const section = (icon, title, rows, keyHeader) => {
+      L.push('');
+      L.push(`  ${C.bold}${icon} ${title}${C.reset}`);
+      L.push('  ' + C.dim +
+        pad(keyHeader, 14) + pad('Ops', 7, 'right') + pad('Baseline', 11, 'right') +
+        pad('Actual', 10, 'right') + pad('Saved', 10, 'right') + pad('Save%', 8, 'right') +
+        pad('Time', 8, 'right') + C.reset);
+      let TB = 0, TA = 0, TS = 0, TC = 0, TM = 0;
+      for (const r of rows) {
+        TB += r.baseline; TA += r.actual; TS += r.saved; TC += r.count; TM += r.ms;
+        L.push('  ' +
+          pad(r.key, 14) + pad(fmtInt(r.count), 7, 'right') +
+          pad(humanTokens(r.baseline), 11, 'right') + pad(humanTokens(r.actual), 10, 'right') +
+          pad(humanTokens(r.saved), 10, 'right') +
+          pad(colorPct(r.savedPct, fmtPct(r.savedPct)), 8, 'right') +
+          pad(fmtDuration(r.ms), 8, 'right'));
+      }
+      const tp = TB > 0 ? (TS / TB) * 100 : 0;
+      L.push('  ' + C.bold +
+        pad('TOTAL', 14) + pad(fmtInt(TC), 7, 'right') +
+        pad(humanTokens(TB), 11, 'right') + pad(humanTokens(TA), 10, 'right') +
+        pad(humanTokens(TS), 10, 'right') + pad(fmtPct(tp), 8, 'right') +
+        pad(fmtDuration(TM), 8, 'right') + C.reset);
+    };
+
+    const daily = agg.buckets.daily.slice(-30);
+    section('📅', `Daily (last ${daily.length})`, daily, 'Date');
+    const weekly = agg.buckets.weekly.slice(-6);
+    section('📆', `Weekly (last ${weekly.length})`, weekly, 'Week of');
+    const monthly = agg.buckets.monthly.slice(-3);
+    section('🗓️', `Monthly (last ${monthly.length})`, monthly, 'Month');
+    L.push('');
+    L.push(`  ${C.dim}saved = baseline − actual · estimated vs whole-file reads · local-only${C.reset}`);
+    L.push('');
+    return L.join('\n');
+  }
+
+  module.exports = {
+    renderSummary,
+    renderBreakdown,
+    // exported for tests
+    humanTokens, fmtUSD, fmtDuration, fmtPct,
+  };
   
 };
 
