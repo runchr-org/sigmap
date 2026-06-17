@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-description: SigMap version history and roadmap. From v0.0 to v7.7.0, with recent releases adding the sigmap conventions command (grounded codegen, Layer 3), the grounding benchmark, read-time self-heal, live-index MCP write hooks, the get_callee_signatures MCP tool (exact callee signatures), realistic per-query savings, release-pipeline robustness (bundle integrity + version.json gates, standalone-bundle smoke test), the sigmap gain token-savings dashboard, supply-chain hardening (zero system-shell access), Squeeze input minimization with symbol enrichment, source-of-truth llms.txt, the verify-ai-output Hallucination Guard, and Memory tools (note, status, read_memory MCP tool).
+description: SigMap version history and roadmap. From v0.0 to v7.8.0, with recent releases adding the sigmap conventions command and its --conflicts breakdown (grounded codegen, Layer 3), the grounding benchmark, read-time self-heal, live-index MCP write hooks, the get_callee_signatures MCP tool (exact callee signatures), realistic per-query savings, release-pipeline robustness (bundle integrity + version.json gates, standalone-bundle smoke test), the sigmap gain token-savings dashboard, supply-chain hardening (zero system-shell access), Squeeze input minimization with symbol enrichment, source-of-truth llms.txt, the verify-ai-output Hallucination Guard, and Memory tools (note, status, read_memory MCP tool).
 head:
   - - meta
     - property: og:title
@@ -22,7 +22,7 @@ head:
 
 Sixty-eight versions shipped. MIT open source from day one.
 
-**Stats:** 97.0% overall token reduction · 1,030 tests passing · 15 MCP tools · 31 languages · 17-language source resolver · 0 npm deps
+**Stats:** 97.0% overall token reduction · 1,045 tests passing · 15 MCP tools · 31 languages · 17-language source resolver · 0 npm deps
 
 ## Token reduction by version
 
@@ -828,6 +828,16 @@ Two milestones in one release. **`verify-ai-output` Reliable MVP** (#232) grows 
 
 ---
 
+### v7.8.0 — `conventions --conflicts` (grounded codegen, Layer 3) ✓ (2026-06-17)
+
+**Minor release — next slice of Layer 3.** Where `sigmap conventions` reports the dominant pattern and a consistency tier, `--conflicts` surfaces *why* a convention is mixed: every variant pattern with its file count, share, a visual bar, and example files — plus rename suggestions that move minority file-naming files toward the dominant style. New zero-dependency, bundle-safe `src/conventions/conflicts.js` (`analyzeConflicts`, `toNamingStyle`, `renameSuggestion`); export-style conflicts list variants but no renames (named ↔ default is a code change, not a rename). `scoreConvention(labels, refs?)` now attaches up to 3 example files per variant (backward compatible). `--json` emits the structured report; a consistent repo prints "no conflicts". `--report`, `--fix`, `--update`, `--ci`, and CLAUDE.md injection remain follow-ups.
+
+**Tags:** `conventions` · `--conflicts` · `analyzeConflicts` · `toNamingStyle` · `rename-suggestions` · `grounded-codegen` · `layer-3` · `#301`
+
+**Impact:** mixed conventions are now actionable — the breakdown + renames are the input the scaffold confidence floor (Gap 1) will consume.
+
+---
+
 ### v7.7.0 — `sigmap conventions` (grounded codegen, Layer 3) ✓ (2026-06-17)
 
 **Minor release — first slice of Layer 3.** A new `sigmap conventions` command extracts and reports a repo's dominant coding conventions — **file naming** style, **export style**, and **test framework** — for TS/JS/Python, so generated code matches the house style instead of drifting (Cause 4: naming/convention drift). New zero-dependency, bundle-safe `src/conventions/extract.js` exposes `classifyNaming` (PascalCase / camelCase / kebab-case / snake_case), `scoreConvention` (a reusable consistency scorer returning `{ dominant, dominantPct, variants, tier }` with tiers at 90% / 70% — Gap 1's scaffold-confidence floor will reuse it), and `extractConventions`. The command writes `.context/conventions.json` and prints a readable report; `--json` for machine output. `--conflicts`, `--fix`, `--ci`, and CLAUDE.md injection are deferred to follow-ups.
@@ -932,7 +942,7 @@ Alongside it: the **token budget now keeps full signatures** (#240) — when con
 
 ## Current milestone — v7.8+ (grounded codegen: convention enforcement + scaffold)
 
-v6.0–v7.0.0 shipped graph-boosted retrieval, incremental signature cache, weights sharing, native tool instructions across all 7 adapters, MCP auto-wire, intelligent source root detection, intent-aware retrieval, cross-session context memory with impact planning, R language support, Python AST extraction, line anchors (Surgical Context), demand-driven retrieval with the `get_lines` MCP tool, the **`verify-ai-output` Hallucination Guard** (five-detector reliable MVP with closest-match suggestions + HTML report), **Memory tools** (`note`, `status`, `read_memory` — 11 MCP tools total), **v7.0.0**: **Squeeze** input minimization with symbol enrichment, full-signatures-under-budget, one canonical usage block, source-of-truth `llms.txt`, and pinned reproducible benchmarks; **v7.1.0**: the **`sigmap gain`** token-savings dashboard (cumulative tokens saved, %, est. $, daily/weekly/monthly trends; privacy-safe, local-only, default-on); and the **grounded-codegen** track — **v7.4–7.5** live-index write hooks + read-time self-heal (Layer 1), **v7.6.0** the offline grounding benchmark (the GATE), and **v7.7.0** **`sigmap conventions`** (Layer 3: extract a repo's file-naming / export / test-framework conventions). Next: finish Layer 3 — `conventions --conflicts/--fix/--ci` and **CLAUDE.md convention injection** — then **Layer 4 scaffold** (generate convention-matched stubs). Also planned: **PR verification** (`verify-plan` / `review-pr` GitHub Action), the **Interactive Context Explorer**, line anchors for the remaining extractors (Java, Go, Rust, C#, …), and performance optimizations for very large monorepos (>50K files).
+v6.0–v7.0.0 shipped graph-boosted retrieval, incremental signature cache, weights sharing, native tool instructions across all 7 adapters, MCP auto-wire, intelligent source root detection, intent-aware retrieval, cross-session context memory with impact planning, R language support, Python AST extraction, line anchors (Surgical Context), demand-driven retrieval with the `get_lines` MCP tool, the **`verify-ai-output` Hallucination Guard** (five-detector reliable MVP with closest-match suggestions + HTML report), **Memory tools** (`note`, `status`, `read_memory` — 11 MCP tools total), **v7.0.0**: **Squeeze** input minimization with symbol enrichment, full-signatures-under-budget, one canonical usage block, source-of-truth `llms.txt`, and pinned reproducible benchmarks; **v7.1.0**: the **`sigmap gain`** token-savings dashboard (cumulative tokens saved, %, est. $, daily/weekly/monthly trends; privacy-safe, local-only, default-on); and the **grounded-codegen** track — **v7.4–7.5** live-index write hooks + read-time self-heal (Layer 1), **v7.6.0** the offline grounding benchmark (the GATE), **v7.7.0** **`sigmap conventions`** (Layer 3: extract a repo's file-naming / export / test-framework conventions); and **v7.8.0** **`conventions --conflicts`** (per-convention breakdown + rename suggestions). Next: finish Layer 3 — `conventions --report/--fix/--update/--ci` and **CLAUDE.md convention injection** — then **Layer 4 scaffold** (generate convention-matched stubs, gated by the confidence floor). Also planned: **PR verification** (`verify-plan` / `review-pr` GitHub Action), the **Interactive Context Explorer**, line anchors for the remaining extractors (Java, Go, Rust, C#, …), and performance optimizations for very large monorepos (>50K files).
 
 ---
 

@@ -7,7 +7,7 @@ head:
       content: "SigMap CLI Reference — every command and flag with examples"
   - - meta
     - property: og:description
-      content: "All 54 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, plan, bench, judge, verify-ai-output, note, status, validate, roots, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
+      content: "All 55 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, plan, bench, judge, verify-ai-output, note, status, validate, roots, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
   - - meta
     - property: og:url
       content: "https://sigmap.io/guide/cli"
@@ -19,7 +19,7 @@ head:
       content: "SigMap CLI Reference — every command and flag with examples"
   - - meta
     - name: twitter:description
-      content: "All 54 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, plan, bench, judge, verify-ai-output, note, status, validate, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
+      content: "All 55 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, plan, bench, judge, verify-ai-output, note, status, validate, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
   - - meta
     - name: twitter:image:alt
       content: "SigMap CLI Reference"
@@ -54,6 +54,7 @@ If you are new to the product, start with the workflow pages first:
 | `ask "<query>" --squeeze-threshold <n>` | Minimum reduction %% to prompt for minimization (default 30) |
 | `squeeze <file\|->` | Minimize a pasted stacktrace / CI-log / JSON blob (`--json` for stats) |
 | `conventions` | Extract & report a repo's coding conventions — file naming, export style, test framework (TS/JS/Python); writes `.context/conventions.json` (`--json` for machine output) |
+| `conventions --conflicts` | Breakdown of every mixed convention (counts, bars, example files) + rename suggestions toward the dominant style |
 | `plan "<goal>"` | Analyze change impact and plan modifications — returns files grouped by confidence |
 | `judge --response <f> --context <f>` | Rule-based groundedness scoring for LLM responses |
 | `verify-ai-output <answer.md>` | Hallucination Guard — flag fake files, test files, imports, symbols, and npm scripts in an AI answer (deterministic, offline) |
@@ -402,8 +403,9 @@ Prose (no recognizable structure) passes through unchanged. The differentiator o
 Extract and report a repo's coding conventions so generated code matches the house style instead of drifting. Scans the source tree (TS/JS/Python) and reports the dominant **file naming** style, **export style**, and **test framework**, each with a consistency tier. Writes `.context/conventions.json` for tools to consume.
 
 ```bash
-sigmap conventions          # report + write .context/conventions.json
-sigmap conventions --json   # machine-readable output
+sigmap conventions              # report + write .context/conventions.json
+sigmap conventions --json       # machine-readable output
+sigmap conventions --conflicts  # breakdown of every mixed convention + rename suggestions
 ```
 
 ```
@@ -427,8 +429,29 @@ Each convention is scored into a **consistency tier** so you know whether it is 
 | Option | Description |
 |--------|-------------|
 | `--json` | Emit `{ fileNaming, exportStyle, testFramework, scope, scannedFiles }` (each convention as `{ dominant, dominantPct, variants, tier }`) |
+| `--conflicts` | Show *why* a convention is mixed — every variant with file count, share, bar, and example files, plus rename suggestions toward the dominant style (`--json` emits the structured report) |
 
-This is the first slice of grounded code generation; `--conflicts`, `--fix`, `--ci`, and CLAUDE.md injection are planned follow-ups.
+### `--conflicts`
+
+When a convention is `mostly` or `inconsistent`, `--conflicts` surfaces the full breakdown: each variant pattern with its file count, share, a visual bar, and example files — plus rename suggestions that move minority file-naming files toward the dominant style. (Export-style conflicts list variants but no renames — switching named ↔ default is a code change, not a rename.) A consistent repo prints `no conflicts`.
+
+```bash
+sigmap conventions --conflicts
+```
+
+```
+[sigmap] conventions --conflicts  (TS/JS/Python)
+
+  file naming — dominant: camelCase 77% [mostly]
+    camelCase      89   77% ███████████████ (dominant)  e.g. diagnostics.js, freshen.js
+    kebab-case     23   20% ████  e.g. coverage-score.js, sig-cache.js
+    snake_case      4    3% █  e.g. python_ast.py
+    rename to match camelCase:
+      coverage-score.js  →  coverageScore.js
+      sig-cache.js  →  sigCache.js
+```
+
+This is the second slice of grounded code generation; `--report`, `--fix`, `--update`, `--ci`, and CLAUDE.md injection are planned follow-ups.
 
 ---
 

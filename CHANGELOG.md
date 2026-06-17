@@ -10,6 +10,15 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [7.8.0] — 2026-06-17
+
+Minor release — `sigmap conventions --conflicts` (grounded codegen, Layer 3).
+
+### Added
+- **`sigmap conventions --conflicts` — per-convention breakdown + rename suggestions (#301):** the next slice of Layer 3. Where `conventions` reports the dominant pattern and a consistency tier, `--conflicts` surfaces *why* a convention is mixed — every variant pattern with its file count, share, a visual bar, and example files, plus rename suggestions that move minority file-naming files toward the dominant style. New zero-dependency, bundle-safe `src/conventions/conflicts.js` (`analyzeConflicts`, `toNamingStyle`, `renameSuggestion`); export-style conflicts list variants but no renames (that's a code change, not a rename). `scoreConvention(labels, refs?)` now attaches up to 3 example files per variant (backward compatible). `--json` emits the structured conflict report; a consistent repo prints "no conflicts". `--report`, `--fix`, `--update`, `--ci`, and CLAUDE.md injection remain follow-ups.
+
+---
+
 ## [7.7.0] — 2026-06-17
 
 Minor release — `sigmap conventions` (grounded codegen, Layer 3).
