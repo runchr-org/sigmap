@@ -10,6 +10,15 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [7.17.0] — 2026-06-18
+
+Minor release — `sigmap conventions --fix` (grounded codegen, Layer 3 — completes the conventions flags).
+
+### Added
+- **`sigmap conventions --fix` — exhaustive rename/move checklist (#328):** the complete, actionable list of every source file whose name doesn't match the dominant convention, with full from→to paths, ready to paste into a task or PR. Distinct from `--conflicts` (a diagnostic summary with up to 3 example basenames) — `--fix` lists *every* offending file with its real path. New zero-dependency, bundle-safe `src/conventions/fix.js` (`buildFixList`) reuses `classifyNaming` + `toNamingStyle`; the command prints a checkbox checklist + count (or "no fixes needed") and is read-only (it never performs renames). `--json` for machine output. This completes the `conventions` flag set (`--conflicts`, `--inject`, `--report`, `--ci`, `--fix`).
+
+---
+
 ## [7.16.0] — 2026-06-18
 
 Minor release — LLM A/B hallucination ablation harness (grounded codegen, IMPL §9).
