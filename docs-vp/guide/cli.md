@@ -7,7 +7,7 @@ head:
       content: "SigMap CLI Reference — every command and flag with examples"
   - - meta
     - property: og:description
-      content: "All 62 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, verify-plan, review-pr, create, note, status, validate, roots, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
+      content: "All 63 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, verify-plan, review-pr, create, note, status, validate, roots, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
   - - meta
     - property: og:url
       content: "https://sigmap.io/guide/cli"
@@ -19,7 +19,7 @@ head:
       content: "SigMap CLI Reference — every command and flag with examples"
   - - meta
     - name: twitter:description
-      content: "All 62 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, verify-plan, review-pr, create, note, status, validate, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
+      content: "All 63 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, verify-plan, review-pr, create, note, status, validate, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
   - - meta
     - name: twitter:image:alt
       content: "SigMap CLI Reference"
@@ -58,6 +58,7 @@ If you are new to the product, start with the workflow pages first:
 | `conventions --inject` | Write/update the auto-detected conventions block in `CLAUDE.md` (idempotent, marker-scoped) so agents see the house style |
 | `conventions --report` | Consistency audit — per-convention + overall score with a trend vs the last run (`--json`) |
 | `conventions --ci` | CI gate — fail when overall consistency < `--min` (default 0.70); `--no-regress` blocks drops vs the last run |
+| `conventions --fix` | Exhaustive rename checklist — every file not matching the dominant naming style, full from→to paths (`--json`) |
 | `scaffold <name>` | Propose a convention-matched structure (filename, export style, test file) for a new module — refuses below the confidence floor |
 | `plan "<goal>"` | Analyze change impact and plan modifications — returns files grouped by confidence |
 | `judge --response <f> --context <f>` | Rule-based groundedness scoring for LLM responses |
@@ -639,7 +640,30 @@ sigmap conventions --ci --no-regress    # also fail on any drop vs the last run
 
 Exit `0` = pass, `1` = below threshold or regressed. Pair with `--report` (which records the history) in a scheduled job, and `--ci` in the PR check.
 
-These are the conventions slices of grounded code generation; `--fix` and `--update` are planned follow-ups.
+### `--fix`
+
+The complete, actionable rename checklist. Where `--conflicts` is a diagnostic summary (counts + up to 3 example files), `--fix` lists **every** source file whose name doesn't match the dominant convention, with full from→to paths — ready to paste into a task or PR. It's read-only (a checklist; it never renames anything).
+
+```bash
+sigmap conventions --fix
+sigmap conventions --fix --json
+```
+
+```
+[sigmap] conventions --fix  (TS/JS/Python)
+  30 files to rename to camelCase:
+  - [ ] src/cache/sig-cache.js  →  src/cache/sigCache.js
+  - [ ] src/discovery/framework-detector.js  →  src/discovery/frameworkDetector.js
+  …
+```
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Emit `{ dominant, renames: [{from,to,fromStyle}], count }` |
+
+A repo where every file already matches prints `no fixes needed`. Test files are skipped.
+
+These are the conventions slices of grounded code generation; `--update` (incremental rescan) is a planned follow-up.
 
 ---
 

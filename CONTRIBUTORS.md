@@ -35,6 +35,9 @@ To ensure proper attribution:
 
 We welcome contributions! See [Contributing](./docs/CONTRIBUTING.md) for guidelines.
 
+### Recent Contributors (v7.17.0)
+- **@manojmallick** — feat: `sigmap conventions --fix` — exhaustive rename/move checklist (every offending file, full from→to paths); `buildFixList`; Layer 3 (#328, PR #329)
+
 ### Recent Contributors (v7.16.0)
 - **@manojmallick** — feat: LLM A/B hallucination ablation harness (IMPL §9) — injected-completer harness (`buildGrounding` / `scoreAnswer` / `runAblation`) + live runner; offline-testable, network confined to scripts/ (#325, PR #326)
 
