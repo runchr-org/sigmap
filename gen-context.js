@@ -28,6 +28,96 @@ function __require(key) {
 // ── ./src/plan/verify-plan ──
 // ── ./src/cache/freshen ──
 // ── ./src/review/review-pr ──
+// ── ./src/create/orchestrate ──
+__factories["./src/create/orchestrate"] = function(module, exports) {
+  
+  /**
+   * create orchestrator (IMPL.md §6.2 — the capstone of the grounded-creation loop).
+   *
+   * Sequences the four guard stages — scaffold → verify-plan → verify-ai-output →
+   * review-pr — in one pass with `n/4` numbering and a single pass/fail summary.
+   * The agent does the LLM writing between stages; `create` runs the deterministic
+   * guards it owns. A stage runs only when its input is present (else it is
+   * skipped, which does not fail the run). Zero-dependency, bundle-safe; delegates
+   * to the real stage modules.
+   */
+
+  const { proposeScaffold } = __require('./src/scaffold/propose');
+  const { verifyPlan } = __require('./src/plan/verify-plan');
+  const { verify } = __require('./src/verify/hallucination-guard');
+  const { reviewPr } = __require('./src/review/review-pr');
+
+  const TOTAL = 4;
+
+  /**
+   * Run the create pipeline over whatever inputs are available.
+   * @param {object} ctx
+   * @param {string} [ctx.task] free-text task label (echoed back)
+   * @param {string} [ctx.name] module name → enables the scaffold stage
+   * @param {object} [ctx.conventions] an `extractConventions` result (for scaffold)
+   * @param {object} [ctx.scaffoldOpts] options forwarded to `proposeScaffold`
+   * @param {string} [ctx.plan] plan markdown → enables verify-plan
+   * @param {string} [ctx.answer] AI answer markdown → enables verify-ai-output
+   * @param {Array<{path:string,status:string}>} [ctx.changedFiles] → enables review-pr
+   * @param {string} cwd repo root
+   * @returns {{ task: string|null, steps: object[], summary: object }}
+   */
+  function orchestrate(ctx = {}, cwd) {
+    const steps = [];
+
+    // 1/4 — scaffold (needs a name + conventions)
+    if (ctx.name && ctx.conventions) {
+      const d = proposeScaffold(ctx.name, ctx.conventions, ctx.scaffoldOpts || {});
+      steps.push({ n: 1, total: TOTAL, name: 'scaffold', ran: true, ok: !!d.ok, skipped: false, detail: d });
+    } else {
+      steps.push({ n: 1, total: TOTAL, name: 'scaffold', ran: false, ok: null, skipped: true, reason: 'no --name' });
+    }
+
+    // 2/4 — verify-plan (needs a plan)
+    if (ctx.plan != null && String(ctx.plan).trim() !== '') {
+      const r = verifyPlan(ctx.plan, cwd);
+      steps.push({ n: 2, total: TOTAL, name: 'verify-plan', ran: true, ok: !!r.summary.ok, skipped: false, detail: r });
+    } else {
+      steps.push({ n: 2, total: TOTAL, name: 'verify-plan', ran: false, ok: null, skipped: true, reason: 'no --plan' });
+    }
+
+    // 3/4 — verify-ai-output (needs an answer)
+    if (ctx.answer != null && String(ctx.answer).trim() !== '') {
+      const r = verify(ctx.answer, cwd);
+      steps.push({ n: 3, total: TOTAL, name: 'verify-ai-output', ran: true, ok: r.summary.total === 0, skipped: false, detail: r });
+    } else {
+      steps.push({ n: 3, total: TOTAL, name: 'verify-ai-output', ran: false, ok: null, skipped: true, reason: 'no --answer' });
+    }
+
+    // 4/4 — review-pr (needs changed files)
+    if (Array.isArray(ctx.changedFiles) && ctx.changedFiles.length) {
+      const r = reviewPr(ctx.changedFiles, cwd);
+      steps.push({ n: 4, total: TOTAL, name: 'review-pr', ran: true, ok: !!r.summary.ok, skipped: false, detail: r });
+    } else {
+      steps.push({ n: 4, total: TOTAL, name: 'review-pr', ran: false, ok: null, skipped: true, reason: 'no changes' });
+    }
+
+    const ran = steps.filter((s) => s.ran);
+    const passed = ran.filter((s) => s.ok).length;
+    const failed = ran.length - passed;
+    return {
+      task: ctx.task || null,
+      steps,
+      summary: {
+        total: TOTAL,
+        ran: ran.length,
+        skipped: steps.length - ran.length,
+        passed,
+        failed,
+        ok: failed === 0,
+      },
+    };
+  }
+
+  module.exports = { orchestrate, TOTAL };
+  
+};
+
 __factories["./src/review/review-pr"] = function(module, exports) {
   
   /**
@@ -7369,7 +7459,7 @@ __factories["./src/mcp/server"] = function(module, exports) {
 
   const SERVER_INFO = {
     name: 'sigmap',
-    version: '7.12.0',
+    version: '7.13.0',
     description: 'SigMap MCP server — code signatures on demand',
   };
 
@@ -13047,7 +13137,7 @@ function __tryGit(args, opts = {}) {
   catch (_) { return ''; }
 }
 
-const VERSION = '7.12.0';
+const VERSION = '7.13.0';
 const MARKER = '\n\n## Auto-generated signatures\n<!-- Updated by gen-context.js -->\n';
 
 function requireSourceOrBundled(key) {
@@ -16551,6 +16641,71 @@ function main() {
     }
     console.log(`\n  ${s.findings} finding(s)`);
     process.exit(1);
+  }
+
+  // Gap 2 (capstone): `sigmap create "<task>"` — orchestrate the 4 guard stages
+  // (scaffold → verify-plan → verify-ai-output → review-pr) with n/4 numbering.
+  if (args[0] === 'create') {
+    const jsonOut = args.includes('--json');
+    const task = args[1] && !args[1].startsWith('--') ? args[1] : null;
+    const flagVal = (flag) => { const i = args.indexOf(flag); return i !== -1 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : null; };
+    const nameArg = flagVal('--name');
+    const planFile = flagVal('--plan');
+    const answerFile = flagVal('--answer');
+    const staged = args.includes('--staged');
+    const baseArg = flagVal('--base');
+
+    const ctx = { task };
+
+    if (nameArg) {
+      ctx.name = nameArg;
+      try {
+        const { extractConventions } = requireSourceOrBundled('./src/conventions/extract');
+        ctx.conventions = extractConventions(cwd, buildFileList(cwd, config));
+      } catch (_) {}
+    }
+    for (const [flag, file, key] of [['--plan', planFile, 'plan'], ['--answer', answerFile, 'answer']]) {
+      if (!file) continue;
+      try { ctx[key] = fs.readFileSync(path.resolve(cwd, file), 'utf8'); }
+      catch (e) { console.error(`[sigmap] cannot read ${flag} file: ${e.message}`); process.exit(1); }
+    }
+
+    // review-pr inputs: changed files from git (same collection as review-pr).
+    let nameStatus = '';
+    if (staged) {
+      nameStatus = __tryGit(['diff', '--cached', '--name-status'], { cwd });
+    } else {
+      let base = baseArg;
+      if (!base) {
+        for (const ref of ['main', 'develop']) {
+          if (__tryGit(['rev-parse', '--verify', '--quiet', ref], { cwd })) { base = ref; break; }
+        }
+      }
+      const mb = base ? (__tryGit(['merge-base', 'HEAD', base], { cwd }) || base) : 'HEAD~1';
+      nameStatus = __tryGit(['diff', '--name-status', `${mb}..HEAD`], { cwd });
+    }
+    ctx.changedFiles = nameStatus.split('\n').filter(Boolean).map((line) => {
+      const parts = line.split('\t');
+      return { path: parts[parts.length - 1], status: parts[0][0] };
+    });
+
+    const { orchestrate } = requireSourceOrBundled('./src/create/orchestrate');
+    const result = orchestrate(ctx, cwd);
+
+    if (jsonOut) {
+      process.stdout.write(JSON.stringify(result) + '\n');
+      process.exit(result.summary.ok ? 0 : 1);
+    }
+
+    console.log(`[sigmap] create${result.task ? ` "${result.task}"` : ''} — grounded-creation pipeline`);
+    for (const st of result.steps) {
+      const mark = st.skipped ? '–' : (st.ok ? '✓' : '✗');
+      const status = st.skipped ? `skipped (${st.reason})` : (st.ok ? 'ok' : 'FAILED');
+      console.log(`  ${st.n}/${st.total} ${mark} ${st.name.padEnd(16)} ${status}`);
+    }
+    const su = result.summary;
+    console.log(`\n  ${su.ran}/${su.total} ran · ${su.passed} passed · ${su.failed} failed · ${su.skipped} skipped`);
+    process.exit(su.ok ? 0 : 1);
   }
 
   // Feature 1: `sigmap explain <file>` — why a file is included or excluded
