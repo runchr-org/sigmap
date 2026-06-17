@@ -10,6 +10,15 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [7.11.0] — 2026-06-17
+
+Minor release — `sigmap verify-plan` (grounded codegen, Gap 2).
+
+### Added
+- **`sigmap verify-plan <plan.md>` — check a plan against the live index (#310):** the first piece of the `sigmap create` pipeline (Gap 2, step 2). Before an agent executes a plan, `verify-plan` validates it against the live index — referenced files and symbols exist, blast radius is acceptable, scope is in bounds — catching Cause 1+2 at plan time (cheaper than after the code is written). New zero-dependency, bundle-safe `src/plan/verify-plan.js` (`verifyPlan`): flags missing files and unknown symbols (with closest-match suggestions), computes per-file blast radius via the impact graph (flags high-blast-radius files), and flags broad scope. Plan input schema is **markdown** (consistent with `verify-ai-output`). CLI reads a file or stdin (`-`), supports `--json`, and exits 1 on blocking errors. The `sigmap create` orchestration and `review-pr` remain follow-ups.
+
+---
+
 ## [7.10.0] — 2026-06-17
 
 Minor release — `sigmap scaffold` with a confidence floor (grounded codegen, Layer 4).

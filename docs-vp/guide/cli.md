@@ -1,13 +1,13 @@
 ---
 title: CLI reference
-description: Complete SigMap CLI reference. All commands and flags with examples — ask, squeeze, conventions, plan, bench, judge, verify-ai-output, note, status, validate, roots, history, --package, --global, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more.
+description: Complete SigMap CLI reference. All commands and flags with examples — ask, squeeze, conventions, plan, bench, judge, verify-ai-output, verify-plan, note, status, validate, roots, history, --package, --global, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more.
 head:
   - - meta
     - property: og:title
       content: "SigMap CLI Reference — every command and flag with examples"
   - - meta
     - property: og:description
-      content: "All 57 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, note, status, validate, roots, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
+      content: "All 58 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, verify-plan, note, status, validate, roots, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
   - - meta
     - property: og:url
       content: "https://sigmap.io/guide/cli"
@@ -19,7 +19,7 @@ head:
       content: "SigMap CLI Reference — every command and flag with examples"
   - - meta
     - name: twitter:description
-      content: "All 57 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, note, status, validate, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
+      content: "All 58 SigMap commands and flags documented with examples. ask, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, verify-plan, note, status, validate, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
   - - meta
     - name: twitter:image:alt
       content: "SigMap CLI Reference"
@@ -59,6 +59,7 @@ If you are new to the product, start with the workflow pages first:
 | `scaffold <name>` | Propose a convention-matched structure (filename, export style, test file) for a new module — refuses below the confidence floor |
 | `plan "<goal>"` | Analyze change impact and plan modifications — returns files grouped by confidence |
 | `judge --response <f> --context <f>` | Rule-based groundedness scoring for LLM responses |
+| `verify-plan <plan.md>` | Check a plan against the live index before execution — referenced files/symbols exist, blast radius, scope (`--json`; stdin via `-`) |
 | `verify-ai-output <answer.md>` | Hallucination Guard — flag fake files, test files, imports, symbols, and npm scripts in an AI answer (deterministic, offline) |
 | `verify-ai-output <answer.md> --report [out.html]` | Write a standalone red/amber/green HTML report of the findings |
 | `validate` | Validate config and coverage; optional query symbol check |
@@ -312,6 +313,41 @@ With `--learn`, judge becomes an opt-in feedback loop. It reads file headings fr
 | `--json` | Emit JSON instead of human-readable output |
 
 Exit code `0` = pass, `1` = fail. Use in CI to gate on response quality.
+
+---
+
+## verify-plan
+
+Check a plan against the **live index** *before* the agent executes it — step 2 of the grounded-creation pipeline (`scaffold` → **verify-plan** → `verify-ai-output` → `review-pr`). It catches problems at plan time, which is cheaper than after the code is written. The plan is plain **markdown**: reference files inline (`` `src/auth/login.ts` ``) and symbols as calls (`` `validateToken(...)` ``).
+
+```bash
+sigmap verify-plan plan.md            # check a plan file
+cat plan.md | sigmap verify-plan -    # or from stdin
+sigmap verify-plan plan.md --json     # machine-readable result
+```
+
+```
+[sigmap] verify-plan — 3 file(s), 2 symbol(s) referenced
+  ✗ missing file: src/auth/sesion.ts (line 4)
+  ✗ unknown symbol: validateTokn() — did you mean validateToken()? (line 6)
+  ⚠ high blast radius: src/core/index.ts → 34 dependents
+
+  2 error(s), 1 warning(s)
+```
+
+It checks three things:
+
+| Check | Flags |
+|-------|-------|
+| **Existence** | referenced files that don't exist · symbols not in the live index (with a closest-match suggestion) — both **errors** |
+| **Blast radius** | each referenced file's transitive dependents (via the impact graph); files above the threshold are a **warning** |
+| **Scope** | plans referencing more distinct files than the scope threshold — a **warning** |
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Emit `{ issues, blast, scope, summary }` |
+
+A plan with any **error** exits non-zero (useful as a gate before execution); warnings do not fail. `sigmap create` orchestration and `review-pr` are planned follow-ups.
 
 ---
 
