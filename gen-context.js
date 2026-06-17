@@ -25,495 +25,8 @@ function __require(key) {
 // ── ./src/conventions/conflicts ──
 // ── ./src/conventions/inject ──
 // ── ./src/scaffold/propose ──
-__factories["./src/scaffold/propose"] = function(module, exports) {
-  
-  /**
-   * Scaffold proposal with a confidence floor (IMPL.md §5 — Cause 3).
-   *
-   * Proposes a convention-matched structure for a new module — filename in the
-   * repo's dominant naming style, the export style to use, and a matching test
-   * file — but only when the conventions are consistent enough. Below a hard
-   * floor it refuses and surfaces the conflict, because a wrong proposal
-   * systematizes bad code. Pure, zero-dependency, bundle-safe; reuses the
-   * conventions primitives.
-   */
-
-  const { toNamingStyle, analyzeConflicts } = __require('./src/conventions/conflicts');
-
-  // Soft threshold is configurable; the hard floor is not (IMPL.md §5.1).
-  const DEFAULT_THRESHOLD = 0.7;
-  const HARD_FLOOR = 0.5;
-
-  /** Tier for a consistency score (matches the conventions tiers). */
-  function _tier(pct) {
-    if (pct >= 0.9) return 'consistent';
-    if (pct >= 0.7) return 'mostly';
-    return 'inconsistent';
-  }
-
-  /** Strip any extension/compound suffix from a requested name → bare stem. */
-  function _stem(name) {
-    const s = String(name || '').trim();
-    const slash = s.lastIndexOf('/');
-    const base = slash >= 0 ? s.slice(slash + 1) : s;
-    const dot = base.indexOf('.');
-    return dot > 0 ? base.slice(0, dot) : base;
-  }
-
-  /** Test file path for a styled stem given the detected framework + ext. */
-  function _testFile(styledStem, framework, ext) {
-    if (framework === 'pytest' || framework === 'unittest') {
-      return `test_${toNamingStyle(styledStem, 'snake_case')}.py`;
-    }
-    return `${styledStem}.test.${ext}`;
-  }
-
-  /**
-   * Propose a convention-matched scaffold, gated by a confidence floor.
-   * @param {string} name desired module name (any casing; extension ignored)
-   * @param {object} conventions an `extractConventions` result
-   * @param {object} [opts]
-   * @param {number} [opts.threshold=0.7] soft threshold (clamped to ≥ hard floor)
-   * @param {boolean} [opts.force=false] allow proposing below the soft threshold
-   *   (never below the hard floor)
-   * @param {string} [opts.ext='js'] file extension for the proposed files
-   * @returns {{ ok:boolean, refused:boolean, name:string, tier:string,
-   *   confidence:number, threshold:number, hardFloor:number, forced:boolean,
-   *   warning:string|null, reason:string, proposal:object|null, conflicts:object }}
-   */
-  function proposeScaffold(name, conventions, opts = {}) {
-    const threshold = Math.max(HARD_FLOOR, opts.threshold != null ? opts.threshold : DEFAULT_THRESHOLD);
-    const force = !!opts.force;
-    const ext = opts.ext || 'js';
-    const fileNaming = (conventions && conventions.fileNaming) || { dominant: null, dominantPct: 0, total: 0 };
-    const exportStyle = (conventions && conventions.exportStyle) || { dominant: null };
-    const confidence = fileNaming.dominantPct || 0;
-    const tier = fileNaming.total > 0 ? _tier(confidence) : 'unknown';
-    const conflicts = analyzeConflicts(conventions || {});
-
-    const base = {
-      ok: false, refused: true, name: String(name || ''), tier, confidence,
-      threshold, hardFloor: HARD_FLOOR, forced: false, warning: null,
-      reason: '', proposal: null, conflicts,
-    };
-
-    if (!fileNaming.dominant || fileNaming.total === 0) {
-      return { ...base, reason: 'no file-naming convention detected — cannot propose a name' };
-    }
-    if (confidence < HARD_FLOOR) {
-      return {
-        ...base,
-        reason: `file-naming consistency ${(confidence * 100).toFixed(0)}% is below the hard floor ${(HARD_FLOOR * 100).toFixed(0)}% — refusing (not overridable)`,
-      };
-    }
-    if (confidence < threshold && !force) {
-      return {
-        ...base,
-        reason: `file-naming consistency ${(confidence * 100).toFixed(0)}% is below the threshold ${(threshold * 100).toFixed(0)}% — refusing (use --force to override above the ${(HARD_FLOOR * 100).toFixed(0)}% floor)`,
-      };
-    }
-
-    const styledStem = toNamingStyle(_stem(name), fileNaming.dominant);
-    const forced = confidence < threshold && force;
-    const proposal = {
-      filename: `${styledStem}.${ext}`,
-      namingStyle: fileNaming.dominant,
-      exportStyle: exportStyle.dominant || 'named',
-      testFile: _testFile(styledStem, conventions.testFramework, ext),
-      testFramework: conventions.testFramework || null,
-    };
-
-    return {
-      ...base,
-      ok: true,
-      refused: false,
-      forced,
-      warning: forced
-        ? `proposed below the ${(threshold * 100).toFixed(0)}% threshold (--force); conventions are only ${tier}`
-        : null,
-      reason: forced ? 'forced proposal above the hard floor' : `conventions are ${tier} — proposing`,
-      proposal,
-    };
-  }
-
-  module.exports = { proposeScaffold, DEFAULT_THRESHOLD, HARD_FLOOR };
-  
-};
-
-__factories["./src/conventions/inject"] = function(module, exports) {
-  
-  /**
-   * CLAUDE.md convention injection (IMPL.md §7 Phase 2 / §8 step 5).
-   *
-   * Renders the conventions detected by `extractConventions` into a
-   * marker-delimited markdown block and injects it into CLAUDE.md so an agent
-   * reading the file plans grounded in the repo's house style. Idempotent and
-   * marker-scoped — it never touches human content or the `## Auto-generated
-   * signatures` block. Pure string transforms; zero-dependency, bundle-safe.
-   */
-
-  const START = '<!-- sigmap-conventions:start -->';
-  const END = '<!-- sigmap-conventions:end -->';
-
-  const TIER_NOTE = {
-    consistent: 'consistent — match it',
-    mostly: 'dominant, with some drift',
-    inconsistent: 'no clear convention — check neighboring files',
-  };
-
-  const NAMES = {
-    fileNaming: 'File naming',
-    exportStyle: 'Export style',
-  };
-
-  const _pct = (n) => `${Math.round(n * 100)}%`;
-
-  function _conventionLine(label, conv) {
-    if (!conv || conv.total === 0 || !conv.dominant) return null;
-    const note = TIER_NOTE[conv.tier] || conv.tier;
-    let line = `- **${label}:** ${conv.dominant} (${_pct(conv.dominantPct)} — ${note}).`;
-    const others = conv.variants.slice(1).filter((v) => v.pct > 0);
-    if (others.length) {
-      line += ` Variants: ${others.map((v) => `${v.label} ${_pct(v.pct)}`).join(', ')}.`;
-    }
-    return line;
-  }
-
-  /**
-   * Render the conventions block (including its start/end markers).
-   * @param {object} result an `extractConventions` result
-   * @param {string} [version] SigMap version for the footer
-   * @returns {string}
-   */
-  function renderConventionsBlock(result, version) {
-    const lines = [];
-    for (const key of ['fileNaming', 'exportStyle']) {
-      const l = _conventionLine(NAMES[key], result && result[key]);
-      if (l) lines.push(l);
-    }
-    if (result && result.testFramework) {
-      lines.push(`- **Test framework:** ${result.testFramework}.`);
-    }
-
-    const body = lines.length
-      ? lines
-      : ['- No conventions detected yet (run `sigmap conventions` on a TS/JS/Python repo).'];
-
-    const ver = version ? ` v${version}` : '';
-    return [
-      START,
-      '## Conventions (auto-detected by SigMap)',
-      '',
-      'Match these when writing or editing code (TS/JS/Python):',
-      '',
-      ...body,
-      '',
-      `<sub>Generated by SigMap${ver} · run \`sigmap conventions --inject\` to refresh.</sub>`,
-      END,
-    ].join('\n');
-  }
-
-  /**
-   * Inject (or replace) the conventions block in existing CLAUDE.md content.
-   * Replaces an existing marked block in place; appends one when absent.
-   * Idempotent — never touches content outside the markers.
-   * @param {string} existing current file content ('' if the file is new)
-   * @param {string} block the block returned by `renderConventionsBlock`
-   * @returns {string}
-   */
-  function injectConventions(existing, block) {
-    const src = String(existing || '');
-    const startIdx = src.indexOf(START);
-    if (startIdx !== -1) {
-      const endIdx = src.indexOf(END, startIdx);
-      if (endIdx !== -1) {
-        const before = src.slice(0, startIdx);
-        const after = src.slice(endIdx + END.length);
-        return before + block + after;
-      }
-    }
-    if (src.trim() === '') return block + '\n';
-    const sep = src.endsWith('\n') ? '\n' : '\n\n';
-    return src + sep + block + '\n';
-  }
-
-  module.exports = { renderConventionsBlock, injectConventions, START, END };
-  
-};
-
-__factories["./src/conventions/conflicts"] = function(module, exports) {
-  
-  /**
-   * Convention conflict analysis (IMPL.md §4 / §5.3 — grounded codegen, Layer 3).
-   *
-   * Given an `extractConventions` result, surface *why* a convention is mixed:
-   * every variant pattern with its file count, share, and example files, plus
-   * rename suggestions that move minority file-naming files toward the dominant
-   * style. Pure, zero-dependency, bundle-safe.
-   */
-
-  /** Split a file name into its stem (before the first dot) and the rest. */
-  function _splitName(filename) {
-    const s = String(filename || '');
-    const dot = s.indexOf('.');
-    if (dot <= 0) return { stem: s, ext: '' };
-    return { stem: s.slice(0, dot), ext: s.slice(dot) };
-  }
-
-  /** Break a stem into lowercase word parts regardless of its current style. */
-  function _words(stem) {
-    return String(stem || '')
-      .replace(/([a-z0-9])([A-Z])/g, '$1 $2') // camel/Pascal boundaries
-      .replace(/[-_]+/g, ' ')                 // kebab / snake separators
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((w) => w.toLowerCase());
-  }
-
-  const _cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
-
-  /**
-   * Convert a file stem to a target naming style.
-   * @param {string} stem name without extension
-   * @param {'PascalCase'|'camelCase'|'kebab-case'|'snake_case'} style
-   * @returns {string}
-   */
-  function toNamingStyle(stem, style) {
-    const w = _words(stem);
-    if (w.length === 0) return String(stem || '');
-    switch (style) {
-      case 'PascalCase': return w.map(_cap).join('');
-      case 'camelCase': return w[0] + w.slice(1).map(_cap).join('');
-      case 'kebab-case': return w.join('-');
-      case 'snake_case': return w.join('_');
-      default: return String(stem || '');
-    }
-  }
-
-  /** Rename suggestion to bring a file to the dominant naming style. */
-  function renameSuggestion(filename, dominantStyle) {
-    const { stem, ext } = _splitName(filename);
-    const to = toNamingStyle(stem, dominantStyle) + ext;
-    return { from: filename, to };
-  }
-
-  const LABELS = {
-    fileNaming: 'file naming',
-    exportStyle: 'export style',
-  };
-
-  /**
-   * Analyze an `extractConventions` result for conflicts.
-   * @param {object} result the object returned by `extractConventions`
-   * @returns {{ hasConflicts: boolean, conventions: Array<{
-   *   key:string, name:string, dominant:string|null, dominantPct:number,
-   *   tier:string, total:number,
-   *   variants:Array<{pattern:string,count:number,pct:number,examples:string[]}>,
-   *   renames:Array<{from:string,to:string}> }> }}
-   */
-  function analyzeConflicts(result) {
-    const out = [];
-    for (const key of ['fileNaming', 'exportStyle']) {
-      const conv = result && result[key];
-      // A conflict is any convention with more than one observed pattern.
-      if (!conv || conv.total === 0 || conv.variants.length < 2) continue;
-
-      const variants = conv.variants.map((v) => ({
-        pattern: v.label,
-        count: v.count,
-        pct: v.pct,
-        examples: v.examples || [],
-      }));
-
-      // Rename suggestions only for file naming (export style is a code change, not a rename).
-      const renames = [];
-      if (key === 'fileNaming' && conv.dominant) {
-        for (const v of conv.variants) {
-          if (v.label === conv.dominant) continue;
-          for (const ex of (v.examples || [])) {
-            renames.push(renameSuggestion(ex, conv.dominant));
-          }
-        }
-      }
-
-      out.push({
-        key,
-        name: LABELS[key] || key,
-        dominant: conv.dominant,
-        dominantPct: conv.dominantPct,
-        tier: conv.tier,
-        total: conv.total,
-        variants,
-        renames,
-      });
-    }
-    return { hasConflicts: out.length > 0, conventions: out };
-  }
-
-  module.exports = { analyzeConflicts, toNamingStyle, renameSuggestion };
-  
-};
-
-__factories["./src/conventions/extract"] = function(module, exports) {
-  
-  /**
-   * Convention extraction (IMPL.md Layer 3 — grounded code generation).
-   *
-   * Detects a repo's dominant coding conventions so generated code matches the
-   * house style instead of drifting (Cause 4: naming/convention drift). This
-   * first slice covers TS/JS/Python and three conventions: file naming, export
-   * style, and test framework. `scoreConvention` is the reusable consistency
-   * primitive that Gap 1 (scaffold confidence) will also build on.
-   *
-   * Zero dependencies, bundle-safe (fs + path only).
-   */
-
-  const fs = require('fs');
-  const path = require('path');
-
-  const JS_TS_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
-  const PY_EXTS = new Set(['.py']);
-  const SCOPED_EXTS = new Set([...JS_TS_EXTS, ...PY_EXTS]);
-
-  // Consistency tiers (IMPL.md §5.1): a convention is only safe to enforce when
-  // it is actually consistent.
-  const TIER_CONSISTENT = 0.9;
-  const TIER_MOSTLY = 0.7;
-
-  /**
-   * Classify a file's base name (without extension) into a naming style.
-   * @param {string} basename a file basename, e.g. "user-service.ts"
-   * @returns {'PascalCase'|'camelCase'|'kebab-case'|'snake_case'|'other'}
-   */
-  function classifyNaming(basename) {
-    let stem = String(basename || '');
-    const dot = stem.indexOf('.');
-    if (dot > 0) stem = stem.slice(0, dot); // strip ext + compound suffix (.test, .d)
-    if (!stem) return 'other';
-    if (/[-]/.test(stem) && /^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(stem)) return 'kebab-case';
-    if (/[_]/.test(stem) && /^[a-z0-9]+(?:_[a-z0-9]+)+$/.test(stem)) return 'snake_case';
-    if (/^[A-Z][A-Za-z0-9]*$/.test(stem) && /[a-z]/.test(stem)) return 'PascalCase';
-    if (/^[a-z][A-Za-z0-9]*$/.test(stem) && /[A-Z]/.test(stem)) return 'camelCase';
-    if (/^[a-z][a-z0-9]*$/.test(stem)) return 'camelCase'; // single lowercase word
-    return 'other';
-  }
-
-  /**
-   * Score a set of categorical observations into a dominant convention plus its
-   * consistency tier. The reusable primitive (IMPL.md §5.2).
-   * @param {string[]} labels observed category for each sample (e.g. naming styles)
-   * @returns {{ dominant: string|null, dominantPct: number, total: number,
-   *             variants: Array<{label:string, count:number, pct:number}>,
-   *             tier: 'consistent'|'mostly'|'inconsistent'|'unknown' }}
-   */
-  function scoreConvention(labels) {
-    const list = (labels || []).filter((l) => l != null && l !== 'other');
-    const total = list.length;
-    if (total === 0) {
-      return { dominant: null, dominantPct: 0, total: 0, variants: [], tier: 'unknown' };
-    }
-    const counts = new Map();
-    for (const l of list) counts.set(l, (counts.get(l) || 0) + 1);
-    const variants = [...counts.entries()]
-      .map(([label, count]) => ({ label, count, pct: count / total }))
-      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-    const top = variants[0];
-    let tier = 'inconsistent';
-    if (top.pct >= TIER_CONSISTENT) tier = 'consistent';
-    else if (top.pct >= TIER_MOSTLY) tier = 'mostly';
-    return {
-      dominant: top.label,
-      dominantPct: top.pct,
-      total,
-      variants,
-      tier,
-    };
-  }
-
-  /** Detect JS/TS export style for a single file's source. */
-  function _jsExportStyle(src) {
-    const s = String(src || '');
-    if (/\bexport\s+default\b/.test(s) || /\bmodule\.exports\s*=\s*(?:function|class|\{?\s*[A-Za-z_$])/.test(s)) {
-      // module.exports = { a, b } reads as named; only treat bare assignment as default.
-      if (/\bexport\s+default\b/.test(s)) return 'default';
-      if (/\bmodule\.exports\s*=\s*\{/.test(s)) return 'named';
-      return 'default';
-    }
-    if (/\bexport\s+(?:const|let|var|function|class|async\s+function|\{|type|interface|enum)\b/.test(s)
-      || /\bmodule\.exports\s*=\s*\{/.test(s) || /\bexports\.[A-Za-z_$]/.test(s)) {
-      return 'named';
-    }
-    return 'other';
-  }
-
-  /** Detect the test framework in use from manifests + source heuristics. */
-  function _detectTestFramework(cwd, files) {
-    const deps = {};
-    try {
-      const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'));
-      Object.assign(deps, pkg.dependencies, pkg.devDependencies);
-    } catch (_) {}
-    for (const fw of ['vitest', 'jest', 'mocha', 'ava', 'jasmine']) {
-      if (deps[fw]) return fw;
-    }
-    // Python: pytest in requirements / pyproject.
-    for (const manifest of ['requirements.txt', 'requirements-dev.txt', 'pyproject.toml', 'setup.cfg']) {
-      try {
-        const raw = fs.readFileSync(path.join(cwd, manifest), 'utf8');
-        if (/\bpytest\b/.test(raw)) return 'pytest';
-        if (/\bunittest\b/.test(raw)) return 'unittest';
-      } catch (_) {}
-    }
-    // Fallback: infer from test file contents.
-    for (const f of files) {
-      if (!/\.(test|spec)\.[jt]sx?$|(^|\/)test_|_test\.py$/.test(f)) continue;
-      let src = '';
-      try { src = fs.readFileSync(f, 'utf8'); } catch (_) { continue; }
-      if (/\bvi\.(fn|mock|spyOn)\b|from ['"]vitest['"]/.test(src)) return 'vitest';
-      if (/\bjest\.(fn|mock|spyOn)\b/.test(src)) return 'jest';
-      if (/\bimport pytest\b|@pytest\./.test(src)) return 'pytest';
-      if (/\bdescribe\(|\bit\(/.test(src)) return 'mocha/jest-style';
-    }
-    return null;
-  }
-
-  /**
-   * Extract repo coding conventions for the scoped languages (TS/JS/Python).
-   * @param {string} cwd repo root
-   * @param {string[]} files absolute paths to source files (e.g. from buildFileList)
-   * @returns {{ fileNaming: object, exportStyle: object, testFramework: string|null,
-   *             scope: string[], scannedFiles: number }}
-   */
-  function extractConventions(cwd, files) {
-    const scoped = (files || []).filter((f) => SCOPED_EXTS.has(path.extname(f).toLowerCase()));
-    const namingLabels = [];
-    const exportLabels = [];
-    for (const f of scoped) {
-      const base = path.basename(f);
-      // Skip test files for the naming convention (they have their own naming).
-      if (!/\.(test|spec)\.[jt]sx?$|(^|\/)test_|_test\.py$/.test(f)) {
-        namingLabels.push(classifyNaming(base));
-      }
-      if (JS_TS_EXTS.has(path.extname(f).toLowerCase())) {
-        let src = '';
-        try { src = fs.readFileSync(f, 'utf8'); } catch (_) {}
-        exportLabels.push(_jsExportStyle(src));
-      }
-    }
-    return {
-      fileNaming: scoreConvention(namingLabels),
-      exportStyle: scoreConvention(exportLabels),
-      testFramework: _detectTestFramework(cwd, scoped),
-      scope: ['typescript', 'javascript', 'python'],
-      scannedFiles: scoped.length,
-    };
-  }
-
-  module.exports = { classifyNaming, scoreConvention, extractConventions };
-  
-};
-
+// ── ./src/plan/verify-plan ──
+// ── ./src/cache/freshen ──
 __factories["./src/cache/freshen"] = function(module, exports) {
   
   /**
@@ -639,6 +152,633 @@ __factories["./src/cache/freshen"] = function(module, exports) {
   module.exports = { freshen };
   
 };
+
+// ── ./src/conventions/conflicts ──
+__factories["./src/conventions/conflicts"] = function(module, exports) {
+  
+  /**
+   * Convention conflict analysis (IMPL.md §4 / §5.3 — grounded codegen, Layer 3).
+   *
+   * Given an `extractConventions` result, surface *why* a convention is mixed:
+   * every variant pattern with its file count, share, and example files, plus
+   * rename suggestions that move minority file-naming files toward the dominant
+   * style. Pure, zero-dependency, bundle-safe.
+   */
+
+  /** Split a file name into its stem (before the first dot) and the rest. */
+  function _splitName(filename) {
+    const s = String(filename || '');
+    const dot = s.indexOf('.');
+    if (dot <= 0) return { stem: s, ext: '' };
+    return { stem: s.slice(0, dot), ext: s.slice(dot) };
+  }
+
+  /** Break a stem into lowercase word parts regardless of its current style. */
+  function _words(stem) {
+    return String(stem || '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2') // camel/Pascal boundaries
+      .replace(/[-_]+/g, ' ')                 // kebab / snake separators
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.toLowerCase());
+  }
+
+  const _cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+
+  /**
+   * Convert a file stem to a target naming style.
+   * @param {string} stem name without extension
+   * @param {'PascalCase'|'camelCase'|'kebab-case'|'snake_case'} style
+   * @returns {string}
+   */
+  function toNamingStyle(stem, style) {
+    const w = _words(stem);
+    if (w.length === 0) return String(stem || '');
+    switch (style) {
+      case 'PascalCase': return w.map(_cap).join('');
+      case 'camelCase': return w[0] + w.slice(1).map(_cap).join('');
+      case 'kebab-case': return w.join('-');
+      case 'snake_case': return w.join('_');
+      default: return String(stem || '');
+    }
+  }
+
+  /** Rename suggestion to bring a file to the dominant naming style. */
+  function renameSuggestion(filename, dominantStyle) {
+    const { stem, ext } = _splitName(filename);
+    const to = toNamingStyle(stem, dominantStyle) + ext;
+    return { from: filename, to };
+  }
+
+  const LABELS = {
+    fileNaming: 'file naming',
+    exportStyle: 'export style',
+  };
+
+  /**
+   * Analyze an `extractConventions` result for conflicts.
+   * @param {object} result the object returned by `extractConventions`
+   * @returns {{ hasConflicts: boolean, conventions: Array<{
+   *   key:string, name:string, dominant:string|null, dominantPct:number,
+   *   tier:string, total:number,
+   *   variants:Array<{pattern:string,count:number,pct:number,examples:string[]}>,
+   *   renames:Array<{from:string,to:string}> }> }}
+   */
+  function analyzeConflicts(result) {
+    const out = [];
+    for (const key of ['fileNaming', 'exportStyle']) {
+      const conv = result && result[key];
+      // A conflict is any convention with more than one observed pattern.
+      if (!conv || conv.total === 0 || conv.variants.length < 2) continue;
+
+      const variants = conv.variants.map((v) => ({
+        pattern: v.label,
+        count: v.count,
+        pct: v.pct,
+        examples: v.examples || [],
+      }));
+
+      // Rename suggestions only for file naming (export style is a code change, not a rename).
+      const renames = [];
+      if (key === 'fileNaming' && conv.dominant) {
+        for (const v of conv.variants) {
+          if (v.label === conv.dominant) continue;
+          for (const ex of (v.examples || [])) {
+            renames.push(renameSuggestion(ex, conv.dominant));
+          }
+        }
+      }
+
+      out.push({
+        key,
+        name: LABELS[key] || key,
+        dominant: conv.dominant,
+        dominantPct: conv.dominantPct,
+        tier: conv.tier,
+        total: conv.total,
+        variants,
+        renames,
+      });
+    }
+    return { hasConflicts: out.length > 0, conventions: out };
+  }
+
+  module.exports = { analyzeConflicts, toNamingStyle, renameSuggestion };
+  
+};
+
+// ── ./src/conventions/extract ──
+__factories["./src/conventions/extract"] = function(module, exports) {
+  
+  /**
+   * Convention extraction (IMPL.md Layer 3 — grounded code generation).
+   *
+   * Detects a repo's dominant coding conventions so generated code matches the
+   * house style instead of drifting (Cause 4: naming/convention drift). This
+   * first slice covers TS/JS/Python and three conventions: file naming, export
+   * style, and test framework. `scoreConvention` is the reusable consistency
+   * primitive that Gap 1 (scaffold confidence) will also build on.
+   *
+   * Zero dependencies, bundle-safe (fs + path only).
+   */
+
+  const fs = require('fs');
+  const path = require('path');
+
+  const JS_TS_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
+  const PY_EXTS = new Set(['.py']);
+  const SCOPED_EXTS = new Set([...JS_TS_EXTS, ...PY_EXTS]);
+
+  // Consistency tiers (IMPL.md §5.1): a convention is only safe to enforce when
+  // it is actually consistent.
+  const TIER_CONSISTENT = 0.9;
+  const TIER_MOSTLY = 0.7;
+
+  /**
+   * Classify a file's base name (without extension) into a naming style.
+   * @param {string} basename a file basename, e.g. "user-service.ts"
+   * @returns {'PascalCase'|'camelCase'|'kebab-case'|'snake_case'|'other'}
+   */
+  function classifyNaming(basename) {
+    let stem = String(basename || '');
+    const dot = stem.indexOf('.');
+    if (dot > 0) stem = stem.slice(0, dot); // strip ext + compound suffix (.test, .d)
+    if (!stem) return 'other';
+    if (/[-]/.test(stem) && /^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(stem)) return 'kebab-case';
+    if (/[_]/.test(stem) && /^[a-z0-9]+(?:_[a-z0-9]+)+$/.test(stem)) return 'snake_case';
+    if (/^[A-Z][A-Za-z0-9]*$/.test(stem) && /[a-z]/.test(stem)) return 'PascalCase';
+    if (/^[a-z][A-Za-z0-9]*$/.test(stem) && /[A-Z]/.test(stem)) return 'camelCase';
+    if (/^[a-z][a-z0-9]*$/.test(stem)) return 'camelCase'; // single lowercase word
+    return 'other';
+  }
+
+  const MAX_EXAMPLES = 3;
+
+  /**
+   * Score a set of categorical observations into a dominant convention plus its
+   * consistency tier. The reusable primitive (IMPL.md §5.2).
+   * @param {string[]} labels observed category for each sample (e.g. naming styles)
+   * @param {string[]} [refs] optional identifier (e.g. file name) parallel to
+   *   `labels`; when given, each variant carries up to 3 `examples`.
+   * @returns {{ dominant: string|null, dominantPct: number, total: number,
+   *             variants: Array<{label:string, count:number, pct:number, examples?:string[]}>,
+   *             tier: 'consistent'|'mostly'|'inconsistent'|'unknown' }}
+   */
+  function scoreConvention(labels, refs) {
+    const all = labels || [];
+    const counts = new Map();
+    const examples = new Map();
+    let total = 0;
+    for (let i = 0; i < all.length; i++) {
+      const l = all[i];
+      if (l == null || l === 'other') continue;
+      total++;
+      counts.set(l, (counts.get(l) || 0) + 1);
+      if (refs && refs[i] != null) {
+        const ex = examples.get(l) || [];
+        if (ex.length < MAX_EXAMPLES) { ex.push(refs[i]); examples.set(l, ex); }
+      }
+    }
+    if (total === 0) {
+      return { dominant: null, dominantPct: 0, total: 0, variants: [], tier: 'unknown' };
+    }
+    const variants = [...counts.entries()]
+      .map(([label, count]) => {
+        const v = { label, count, pct: count / total };
+        if (refs) v.examples = examples.get(label) || [];
+        return v;
+      })
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    const top = variants[0];
+    let tier = 'inconsistent';
+    if (top.pct >= TIER_CONSISTENT) tier = 'consistent';
+    else if (top.pct >= TIER_MOSTLY) tier = 'mostly';
+    return {
+      dominant: top.label,
+      dominantPct: top.pct,
+      total,
+      variants,
+      tier,
+    };
+  }
+
+  /** Detect JS/TS export style for a single file's source. */
+  function _jsExportStyle(src) {
+    const s = String(src || '');
+    if (/\bexport\s+default\b/.test(s) || /\bmodule\.exports\s*=\s*(?:function|class|\{?\s*[A-Za-z_$])/.test(s)) {
+      // module.exports = { a, b } reads as named; only treat bare assignment as default.
+      if (/\bexport\s+default\b/.test(s)) return 'default';
+      if (/\bmodule\.exports\s*=\s*\{/.test(s)) return 'named';
+      return 'default';
+    }
+    if (/\bexport\s+(?:const|let|var|function|class|async\s+function|\{|type|interface|enum)\b/.test(s)
+      || /\bmodule\.exports\s*=\s*\{/.test(s) || /\bexports\.[A-Za-z_$]/.test(s)) {
+      return 'named';
+    }
+    return 'other';
+  }
+
+  /** Detect the test framework in use from manifests + source heuristics. */
+  function _detectTestFramework(cwd, files) {
+    const deps = {};
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'));
+      Object.assign(deps, pkg.dependencies, pkg.devDependencies);
+    } catch (_) {}
+    for (const fw of ['vitest', 'jest', 'mocha', 'ava', 'jasmine']) {
+      if (deps[fw]) return fw;
+    }
+    // Python: pytest in requirements / pyproject.
+    for (const manifest of ['requirements.txt', 'requirements-dev.txt', 'pyproject.toml', 'setup.cfg']) {
+      try {
+        const raw = fs.readFileSync(path.join(cwd, manifest), 'utf8');
+        if (/\bpytest\b/.test(raw)) return 'pytest';
+        if (/\bunittest\b/.test(raw)) return 'unittest';
+      } catch (_) {}
+    }
+    // Fallback: infer from test file contents.
+    for (const f of files) {
+      if (!/\.(test|spec)\.[jt]sx?$|(^|\/)test_|_test\.py$/.test(f)) continue;
+      let src = '';
+      try { src = fs.readFileSync(f, 'utf8'); } catch (_) { continue; }
+      if (/\bvi\.(fn|mock|spyOn)\b|from ['"]vitest['"]/.test(src)) return 'vitest';
+      if (/\bjest\.(fn|mock|spyOn)\b/.test(src)) return 'jest';
+      if (/\bimport pytest\b|@pytest\./.test(src)) return 'pytest';
+      if (/\bdescribe\(|\bit\(/.test(src)) return 'mocha/jest-style';
+    }
+    return null;
+  }
+
+  /**
+   * Extract repo coding conventions for the scoped languages (TS/JS/Python).
+   * @param {string} cwd repo root
+   * @param {string[]} files absolute paths to source files (e.g. from buildFileList)
+   * @returns {{ fileNaming: object, exportStyle: object, testFramework: string|null,
+   *             scope: string[], scannedFiles: number }}
+   */
+  function extractConventions(cwd, files) {
+    const scoped = (files || []).filter((f) => SCOPED_EXTS.has(path.extname(f).toLowerCase()));
+    const namingLabels = [];
+    const namingRefs = [];
+    const exportLabels = [];
+    const exportRefs = [];
+    for (const f of scoped) {
+      const base = path.basename(f);
+      // Skip test files for the naming convention (they have their own naming).
+      if (!/\.(test|spec)\.[jt]sx?$|(^|\/)test_|_test\.py$/.test(f)) {
+        namingLabels.push(classifyNaming(base));
+        namingRefs.push(base);
+      }
+      if (JS_TS_EXTS.has(path.extname(f).toLowerCase())) {
+        let src = '';
+        try { src = fs.readFileSync(f, 'utf8'); } catch (_) {}
+        exportLabels.push(_jsExportStyle(src));
+        exportRefs.push(base);
+      }
+    }
+    return {
+      fileNaming: scoreConvention(namingLabels, namingRefs),
+      exportStyle: scoreConvention(exportLabels, exportRefs),
+      testFramework: _detectTestFramework(cwd, scoped),
+      scope: ['typescript', 'javascript', 'python'],
+      scannedFiles: scoped.length,
+    };
+  }
+
+  module.exports = { classifyNaming, scoreConvention, extractConventions };
+  
+};
+
+// ── ./src/conventions/inject ──
+__factories["./src/conventions/inject"] = function(module, exports) {
+  
+  /**
+   * CLAUDE.md convention injection (IMPL.md §7 Phase 2 / §8 step 5).
+   *
+   * Renders the conventions detected by `extractConventions` into a
+   * marker-delimited markdown block and injects it into CLAUDE.md so an agent
+   * reading the file plans grounded in the repo's house style. Idempotent and
+   * marker-scoped — it never touches human content or the `## Auto-generated
+   * signatures` block. Pure string transforms; zero-dependency, bundle-safe.
+   */
+
+  const START = '<!-- sigmap-conventions:start -->';
+  const END = '<!-- sigmap-conventions:end -->';
+
+  const TIER_NOTE = {
+    consistent: 'consistent — match it',
+    mostly: 'dominant, with some drift',
+    inconsistent: 'no clear convention — check neighboring files',
+  };
+
+  const NAMES = {
+    fileNaming: 'File naming',
+    exportStyle: 'Export style',
+  };
+
+  const _pct = (n) => `${Math.round(n * 100)}%`;
+
+  function _conventionLine(label, conv) {
+    if (!conv || conv.total === 0 || !conv.dominant) return null;
+    const note = TIER_NOTE[conv.tier] || conv.tier;
+    let line = `- **${label}:** ${conv.dominant} (${_pct(conv.dominantPct)} — ${note}).`;
+    const others = conv.variants.slice(1).filter((v) => v.pct > 0);
+    if (others.length) {
+      line += ` Variants: ${others.map((v) => `${v.label} ${_pct(v.pct)}`).join(', ')}.`;
+    }
+    return line;
+  }
+
+  /**
+   * Render the conventions block (including its start/end markers).
+   * @param {object} result an `extractConventions` result
+   * @param {string} [version] SigMap version for the footer
+   * @returns {string}
+   */
+  function renderConventionsBlock(result, version) {
+    const lines = [];
+    for (const key of ['fileNaming', 'exportStyle']) {
+      const l = _conventionLine(NAMES[key], result && result[key]);
+      if (l) lines.push(l);
+    }
+    if (result && result.testFramework) {
+      lines.push(`- **Test framework:** ${result.testFramework}.`);
+    }
+
+    const body = lines.length
+      ? lines
+      : ['- No conventions detected yet (run `sigmap conventions` on a TS/JS/Python repo).'];
+
+    const ver = version ? ` v${version}` : '';
+    return [
+      START,
+      '## Conventions (auto-detected by SigMap)',
+      '',
+      'Match these when writing or editing code (TS/JS/Python):',
+      '',
+      ...body,
+      '',
+      `<sub>Generated by SigMap${ver} · run \`sigmap conventions --inject\` to refresh.</sub>`,
+      END,
+    ].join('\n');
+  }
+
+  /**
+   * Inject (or replace) the conventions block in existing CLAUDE.md content.
+   * Replaces an existing marked block in place; appends one when absent.
+   * Idempotent — never touches content outside the markers.
+   * @param {string} existing current file content ('' if the file is new)
+   * @param {string} block the block returned by `renderConventionsBlock`
+   * @returns {string}
+   */
+  function injectConventions(existing, block) {
+    const src = String(existing || '');
+    const startIdx = src.indexOf(START);
+    if (startIdx !== -1) {
+      const endIdx = src.indexOf(END, startIdx);
+      if (endIdx !== -1) {
+        const before = src.slice(0, startIdx);
+        const after = src.slice(endIdx + END.length);
+        return before + block + after;
+      }
+    }
+    if (src.trim() === '') return block + '\n';
+    const sep = src.endsWith('\n') ? '\n' : '\n\n';
+    return src + sep + block + '\n';
+  }
+
+  module.exports = { renderConventionsBlock, injectConventions, START, END };
+  
+};
+
+// ── ./src/scaffold/propose ──
+__factories["./src/scaffold/propose"] = function(module, exports) {
+  
+  /**
+   * Scaffold proposal with a confidence floor (IMPL.md §5 — Cause 3).
+   *
+   * Proposes a convention-matched structure for a new module — filename in the
+   * repo's dominant naming style, the export style to use, and a matching test
+   * file — but only when the conventions are consistent enough. Below a hard
+   * floor it refuses and surfaces the conflict, because a wrong proposal
+   * systematizes bad code. Pure, zero-dependency, bundle-safe; reuses the
+   * conventions primitives.
+   */
+
+  const { toNamingStyle, analyzeConflicts } = __require('./src/conventions/conflicts');
+
+  // Soft threshold is configurable; the hard floor is not (IMPL.md §5.1).
+  const DEFAULT_THRESHOLD = 0.7;
+  const HARD_FLOOR = 0.5;
+
+  /** Tier for a consistency score (matches the conventions tiers). */
+  function _tier(pct) {
+    if (pct >= 0.9) return 'consistent';
+    if (pct >= 0.7) return 'mostly';
+    return 'inconsistent';
+  }
+
+  /** Strip any extension/compound suffix from a requested name → bare stem. */
+  function _stem(name) {
+    const s = String(name || '').trim();
+    const slash = s.lastIndexOf('/');
+    const base = slash >= 0 ? s.slice(slash + 1) : s;
+    const dot = base.indexOf('.');
+    return dot > 0 ? base.slice(0, dot) : base;
+  }
+
+  /** Test file path for a styled stem given the detected framework + ext. */
+  function _testFile(styledStem, framework, ext) {
+    if (framework === 'pytest' || framework === 'unittest') {
+      return `test_${toNamingStyle(styledStem, 'snake_case')}.py`;
+    }
+    return `${styledStem}.test.${ext}`;
+  }
+
+  /**
+   * Propose a convention-matched scaffold, gated by a confidence floor.
+   * @param {string} name desired module name (any casing; extension ignored)
+   * @param {object} conventions an `extractConventions` result
+   * @param {object} [opts]
+   * @param {number} [opts.threshold=0.7] soft threshold (clamped to ≥ hard floor)
+   * @param {boolean} [opts.force=false] allow proposing below the soft threshold
+   *   (never below the hard floor)
+   * @param {string} [opts.ext='js'] file extension for the proposed files
+   * @returns {{ ok:boolean, refused:boolean, name:string, tier:string,
+   *   confidence:number, threshold:number, hardFloor:number, forced:boolean,
+   *   warning:string|null, reason:string, proposal:object|null, conflicts:object }}
+   */
+  function proposeScaffold(name, conventions, opts = {}) {
+    const threshold = Math.max(HARD_FLOOR, opts.threshold != null ? opts.threshold : DEFAULT_THRESHOLD);
+    const force = !!opts.force;
+    const ext = opts.ext || 'js';
+    const fileNaming = (conventions && conventions.fileNaming) || { dominant: null, dominantPct: 0, total: 0 };
+    const exportStyle = (conventions && conventions.exportStyle) || { dominant: null };
+    const confidence = fileNaming.dominantPct || 0;
+    const tier = fileNaming.total > 0 ? _tier(confidence) : 'unknown';
+    const conflicts = analyzeConflicts(conventions || {});
+
+    const base = {
+      ok: false, refused: true, name: String(name || ''), tier, confidence,
+      threshold, hardFloor: HARD_FLOOR, forced: false, warning: null,
+      reason: '', proposal: null, conflicts,
+    };
+
+    if (!fileNaming.dominant || fileNaming.total === 0) {
+      return { ...base, reason: 'no file-naming convention detected — cannot propose a name' };
+    }
+    if (confidence < HARD_FLOOR) {
+      return {
+        ...base,
+        reason: `file-naming consistency ${(confidence * 100).toFixed(0)}% is below the hard floor ${(HARD_FLOOR * 100).toFixed(0)}% — refusing (not overridable)`,
+      };
+    }
+    if (confidence < threshold && !force) {
+      return {
+        ...base,
+        reason: `file-naming consistency ${(confidence * 100).toFixed(0)}% is below the threshold ${(threshold * 100).toFixed(0)}% — refusing (use --force to override above the ${(HARD_FLOOR * 100).toFixed(0)}% floor)`,
+      };
+    }
+
+    const styledStem = toNamingStyle(_stem(name), fileNaming.dominant);
+    const forced = confidence < threshold && force;
+    const proposal = {
+      filename: `${styledStem}.${ext}`,
+      namingStyle: fileNaming.dominant,
+      exportStyle: exportStyle.dominant || 'named',
+      testFile: _testFile(styledStem, conventions.testFramework, ext),
+      testFramework: conventions.testFramework || null,
+    };
+
+    return {
+      ...base,
+      ok: true,
+      refused: false,
+      forced,
+      warning: forced
+        ? `proposed below the ${(threshold * 100).toFixed(0)}% threshold (--force); conventions are only ${tier}`
+        : null,
+      reason: forced ? 'forced proposal above the hard floor' : `conventions are ${tier} — proposing`,
+      proposal,
+    };
+  }
+
+  module.exports = { proposeScaffold, DEFAULT_THRESHOLD, HARD_FLOOR };
+  
+};
+
+__factories["./src/plan/verify-plan"] = function(module, exports) {
+  
+  /**
+   * verify-plan (IMPL.md §6.1 — Gap 2, step 2 of the `create` pipeline).
+   *
+   * Checks a plan (markdown) against the LIVE index before execution: do the
+   * referenced files and symbols exist, is the blast radius acceptable, is the
+   * scope in bounds? Catches Cause 1+2 at plan time — cheaper than after the
+   * code is written. Reuses the verify primitives + the impact graph.
+   * Zero-dependency, bundle-safe.
+   */
+
+  const fs = require('fs');
+  const path = require('path');
+  const { extractFilePaths, extractSymbols } = __require('./src/verify/parsers');
+  const { buildSymbolSet } = __require('./src/verify/hallucination-guard');
+  const { closestMatch } = __require('./src/verify/closest-match');
+  const { analyzeImpact } = __require('./src/graph/impact');
+
+  const DEFAULT_BLAST_THRESHOLD = 20; // transitive+direct dependents → "high blast radius"
+  const DEFAULT_SCOPE_THRESHOLD = 10; // distinct referenced files → "broad scope"
+
+  /** Resolve a referenced path against cwd (handles a leading "./"). */
+  function _fileExists(cwd, ref) {
+    const clean = ref.replace(/^\.\//, '');
+    for (const c of [path.resolve(cwd, clean), path.resolve(cwd, ref)]) {
+      try { if (fs.existsSync(c)) return true; } catch (_) {}
+    }
+    return false;
+  }
+
+  /**
+   * Verify a plan against the live index.
+   * @param {string} planText the plan as markdown
+   * @param {string} cwd repo root
+   * @param {object} [opts]
+   * @param {number} [opts.blastThreshold=20]
+   * @param {number} [opts.scopeThreshold=10]
+   * @param {(ref:string)=>boolean} [opts.fileExists] override for testing
+   * @returns {{ issues: object[], blast: object[], scope: object, summary: object }}
+   */
+  function verifyPlan(planText, cwd, opts = {}) {
+    const blastThreshold = opts.blastThreshold != null ? opts.blastThreshold : DEFAULT_BLAST_THRESHOLD;
+    const scopeThreshold = opts.scopeThreshold != null ? opts.scopeThreshold : DEFAULT_SCOPE_THRESHOLD;
+    const fileExists = opts.fileExists || ((ref) => _fileExists(cwd, ref));
+
+    const text = String(planText || '');
+    const filesRef = extractFilePaths(text);   // [{ path, line }]
+    const symbolsRef = extractSymbols(text);   // [{ name, line }]
+    const { set: symbolSet, symbolCandidates } = buildSymbolSet(cwd);
+
+    const issues = [];
+
+    // 1. Referenced files must exist.
+    const existingFiles = [];
+    for (const f of filesRef) {
+      if (fileExists(f.path)) existingFiles.push(f.path);
+      else issues.push({ type: 'missing-file', ref: f.path, line: f.line, severity: 'error' });
+    }
+
+    // 2. Referenced symbols must exist in the live index (suggest a near match).
+    for (const s of symbolsRef) {
+      if (symbolSet.has(s.name)) continue;
+      const match = closestMatch(s.name, symbolCandidates);
+      issues.push({
+        type: 'unknown-symbol', ref: s.name, line: s.line, severity: 'error',
+        suggestion: match ? match.name : null,
+      });
+    }
+
+    // 3. Blast radius for each existing referenced file (one graph build).
+    const blast = [];
+    if (existingFiles.length) {
+      let impacts = [];
+      try { impacts = analyzeImpact(existingFiles, cwd, {}); } catch (_) { impacts = []; }
+      for (const { file, impact } of impacts) {
+        const entry = { file, totalImpact: impact.totalImpact, tests: impact.tests.length };
+        blast.push(entry);
+        if (impact.totalImpact > blastThreshold) {
+          issues.push({ type: 'high-blast-radius', ref: file, count: impact.totalImpact, severity: 'warn' });
+        }
+      }
+      blast.sort((a, b) => b.totalImpact - a.totalImpact);
+    }
+
+    // 4. Scope.
+    const scope = { files: filesRef.length, symbols: symbolsRef.length, threshold: scopeThreshold };
+    if (filesRef.length > scopeThreshold) {
+      issues.push({ type: 'broad-scope', count: filesRef.length, threshold: scopeThreshold, severity: 'warn' });
+    }
+
+    const errors = issues.filter((i) => i.severity === 'error').length;
+    const warnings = issues.filter((i) => i.severity === 'warn').length;
+    return {
+      issues,
+      blast,
+      scope,
+      summary: {
+        filesReferenced: filesRef.length,
+        symbolsReferenced: symbolsRef.length,
+        errors,
+        warnings,
+        ok: errors === 0,
+      },
+    };
+  }
+
+  module.exports = { verifyPlan, DEFAULT_BLAST_THRESHOLD, DEFAULT_SCOPE_THRESHOLD };
+  
+};
+
 // ── ./src/extractors/dispatch ──
 __factories["./src/extractors/dispatch"] = function(module, exports) {
   
@@ -16151,6 +16291,47 @@ function main() {
   }
 
   // `sigmap verify-ai-output <answer.md>` — Hallucination Guard (deterministic core)
+  // Gap 2 (step 2): `sigmap verify-plan <plan.md>` — check a plan against the
+  // live index before execution (files/symbols exist, blast radius, scope).
+  if (args[0] === 'verify-plan') {
+    const target = args[1] && !args[1].startsWith('--') ? args[1] : null;
+    const jsonOut = args.includes('--json');
+    if (!target) {
+      console.error('[sigmap] Usage: sigmap verify-plan <plan.md|-> [--json]');
+      process.exit(1);
+    }
+    let planText = '';
+    try {
+      planText = fs.readFileSync(target === '-' ? 0 : path.resolve(cwd, target), 'utf8');
+    } catch (e) {
+      console.error(`[sigmap] cannot read plan: ${e.message}`);
+      process.exit(1);
+    }
+    const { verifyPlan } = requireSourceOrBundled('./src/plan/verify-plan');
+    const result = verifyPlan(planText, cwd);
+
+    if (jsonOut) {
+      process.stdout.write(JSON.stringify(result) + '\n');
+      process.exit(result.summary.ok ? 0 : 1);
+    }
+
+    const s = result.summary;
+    console.log(`[sigmap] verify-plan — ${s.filesReferenced} file(s), ${s.symbolsReferenced} symbol(s) referenced`);
+    if (result.issues.length === 0) {
+      console.log('  ✓ plan checks out — all references exist, blast radius and scope in bounds');
+      process.exit(0);
+    }
+    for (const i of result.issues) {
+      const mark = i.severity === 'error' ? '✗' : '⚠';
+      if (i.type === 'missing-file') console.log(`  ${mark} missing file: ${i.ref} (line ${i.line})`);
+      else if (i.type === 'unknown-symbol') console.log(`  ${mark} unknown symbol: ${i.ref}()${i.suggestion ? ` — did you mean ${i.suggestion}()?` : ''} (line ${i.line})`);
+      else if (i.type === 'high-blast-radius') console.log(`  ${mark} high blast radius: ${i.ref} → ${i.count} dependents`);
+      else if (i.type === 'broad-scope') console.log(`  ${mark} broad scope: ${i.count} files (threshold ${i.threshold})`);
+    }
+    console.log(`\n  ${s.errors} error(s), ${s.warnings} warning(s)`);
+    process.exit(s.ok ? 0 : 1);
+  }
+
   if (args[0] === 'verify-ai-output') {
     const target = args[1];
     const jsonOut = args.includes('--json');
