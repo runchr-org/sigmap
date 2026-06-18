@@ -10,11 +10,16 @@
  * script only supplies the live model call + I/O, so the network touch is
  * confined to scripts/ (never the published library surface).
  *
- * Usage:
- *   ANTHROPIC_API_KEY=sk-... node scripts/run-llm-ablation.mjs
- *   ANTHROPIC_API_KEY=sk-... node scripts/run-llm-ablation.mjs --save --model claude-sonnet-4-6
+ * Providers (auto-detected from the present key; --provider overrides):
+ *   anthropic — ANTHROPIC_API_KEY            (default model claude-sonnet-4-6)
+ *   gemini    — GEMINI_API_KEY / GOOGLE_API_KEY  (default model gemini-2.0-flash)
  *
- * Without an API key it prints guidance and exits 0 (skip — never fails CI).
+ * Usage:
+ *   ANTHROPIC_API_KEY=sk-...  node scripts/run-llm-ablation.mjs
+ *   GEMINI_API_KEY=...        node scripts/run-llm-ablation.mjs            # AI Studio key
+ *   GEMINI_API_KEY=...        node scripts/run-llm-ablation.mjs --save --model gemini-2.5-pro
+ *
+ * Without any API key it prints guidance and exits 0 (skip — never fails CI).
  */
 
 import fs from 'fs';
@@ -25,33 +30,57 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const { runAblation } = require(path.join(ROOT, 'src/eval/llm-ablation.js'));
+const { runAblation, buildGrounding } = require(path.join(ROOT, 'src/eval/llm-ablation.js'));
 
-const save = process.argv.includes('--save');
-const modelIdx = process.argv.indexOf('--model');
-const MODEL = modelIdx !== -1 && process.argv[modelIdx + 1] ? process.argv[modelIdx + 1] : 'claude-sonnet-4-6';
-const API_KEY = process.env.ANTHROPIC_API_KEY;
+const argv = process.argv;
+const flag = (name) => { const i = argv.indexOf(name); return i !== -1 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : null; };
+const save = argv.includes('--save');
+const modelArg = flag('--model');
+
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+const DEFAULT_MODEL = { anthropic: 'claude-sonnet-4-6', gemini: 'gemini-2.0-flash' };
+
+// Resolve the provider: explicit flag, else whichever key is present (Gemini first).
+let provider = flag('--provider');
+if (!provider) provider = GEMINI_KEY ? 'gemini' : ANTHROPIC_KEY ? 'anthropic' : null;
+const MODEL = modelArg || (provider ? DEFAULT_MODEL[provider] : null);
 
 function loadTasks() {
   const p = path.join(ROOT, 'benchmarks', 'llm-ablation-tasks.json');
   try { return JSON.parse(fs.readFileSync(p, 'utf8')).tasks || []; } catch (_) { return []; }
 }
 
-/** Live model call → completion text. One network request per call. */
+/** Anthropic Messages API → completion text. */
 async function anthropicComplete(prompt) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
+    headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({ model: MODEL, max_tokens: 1024, messages: [{ role: 'user', content: prompt }] }),
   });
   if (!res.ok) throw new Error(`Anthropic API ${res.status}: ${await res.text()}`);
   const data = await res.json();
   return (data.content || []).map((b) => b.text || '').join('\n');
 }
+
+/** Gemini (AI Studio / Generative Language API) generateContent → completion text. */
+async function geminiComplete(prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent?key=${GEMINI_KEY}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 1024 },
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini API ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return ((data.candidates || [])[0]?.content?.parts || []).map((p) => p.text || '').join('\n');
+}
+
+const COMPLETERS = { anthropic: anthropicComplete, gemini: geminiComplete };
 
 async function main() {
   const tasks = loadTasks();
@@ -60,26 +89,29 @@ async function main() {
     process.exit(1);
   }
 
-  if (!API_KEY) {
+  if (!provider) {
     console.log('SigMap LLM A/B ablation (IMPL §9)\n');
-    console.log('  ⚠ ANTHROPIC_API_KEY not set — skipping the live run.');
+    console.log('  ⚠ No API key set — skipping the live run.');
     console.log(`  The harness is ready: ${tasks.length} tasks in benchmarks/llm-ablation-tasks.json.`);
-    console.log('  Run live with:  ANTHROPIC_API_KEY=sk-... npm run benchmark:llm-ablation');
+    console.log('  Run live with one of:');
+    console.log('    ANTHROPIC_API_KEY=sk-...  npm run benchmark:llm-ablation');
+    console.log('    GEMINI_API_KEY=...        npm run benchmark:llm-ablation   # AI Studio key');
     process.exit(0);
   }
 
-  console.log(`SigMap LLM A/B ablation — ${MODEL}, ${tasks.length} tasks (2 calls each)\n`);
+  const liveComplete = COMPLETERS[provider];
+  if (!liveComplete) { console.error(`[llm-ablation] unknown provider: ${provider}`); process.exit(1); }
 
-  // Resolve all calls (the injected `complete` is async-aware via await below).
+  console.log(`SigMap LLM A/B ablation — ${provider}/${MODEL}, ${tasks.length} tasks (2 calls each)\n`);
+
+  // Pre-fill a cache so the injected (sync) completer can serve both arms.
   const cache = new Map();
   const complete = (prompt) => cache.get(prompt);
-  // Pre-fill the cache by running each prompt once (ungrounded + grounded are distinct strings).
-  const { buildGrounding } = require(path.join(ROOT, 'src/eval/llm-ablation.js'));
   const grounding = buildGrounding(ROOT);
   for (const t of tasks) {
     const grounded = grounding ? `${grounding}\n\n---\n\n${t.prompt}` : t.prompt;
     for (const p of [t.prompt, grounded]) {
-      if (!cache.has(p)) { process.stdout.write(`  · calling model (${t.id})…\n`); cache.set(p, await anthropicComplete(p)); }
+      if (!cache.has(p)) { process.stdout.write(`  · calling model (${t.id})…\n`); cache.set(p, await liveComplete(p)); }
     }
   }
 
@@ -98,7 +130,7 @@ async function main() {
   if (save) {
     const out = path.join(ROOT, 'benchmarks', 'reports', 'llm-ablation.json');
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, JSON.stringify({ benchmark: 'llm-ablation', model: MODEL, ...result }, null, 2));
+    fs.writeFileSync(out, JSON.stringify({ benchmark: 'llm-ablation', provider, model: MODEL, ...result }, null, 2));
     console.log(`\n  saved → benchmarks/reports/llm-ablation.json`);
   }
 }

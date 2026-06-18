@@ -92,13 +92,16 @@ test('runAblation: calls completer twice per task (ungrounded + grounded)', () =
 });
 
 // ── script (skip path) ──────────────────────────────────────────────────────
-test('script: exits 0 with guidance when ANTHROPIC_API_KEY is absent', () => {
+test('script: exits 0 with guidance when no API key is set', () => {
   const env = { ...process.env };
   delete env.ANTHROPIC_API_KEY;
+  delete env.GEMINI_API_KEY;
+  delete env.GOOGLE_API_KEY;
   const res = spawnSync('node', [SCRIPT], { cwd: ROOT, encoding: 'utf8', env });
   assert.strictEqual(res.status, 0, res.stderr);
-  assert.ok(/ANTHROPIC_API_KEY not set/.test(res.stdout), 'prints skip guidance');
+  assert.ok(/No API key set/.test(res.stdout), 'prints skip guidance');
   assert.ok(/harness is ready/.test(res.stdout));
+  assert.ok(/GEMINI_API_KEY/.test(res.stdout), 'mentions the Gemini provider');
 });
 
 console.log(`\nllm-ablation: ${passed} passed, ${failed} failed`);
