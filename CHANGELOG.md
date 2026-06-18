@@ -10,6 +10,18 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [7.22.0] — 2026-06-18
+
+Minor release — realistic §9 ablation (real-symbol corpus, exact-signature grounding, --verbose) + Gemini model fix.
+
+### Added
+- **Realistic §9 ablation — real-symbol corpus, exact-signature grounding, `--verbose` (#344):** the LLM A/B ablation now measures something meaningful. `buildGrounding` emits **exact signatures grouped by file** (what `get_callee_signatures` returns, bounded by `maxSignatures`) instead of a flat symbol-name dump — the real product behavior. New `scripts/gen-ablation-corpus.mjs` generates ~40 tasks from the repo's actual exported symbols/files (`benchmarks/llm-ablation-tasks.json`). `src/eval/llm-ablation.js` adds `scoreAnswerDetail` (count + issues) and `runAblation`'s `collectIssues`; the runner's `--verbose` prints every flagged item per arm. A 40-task Gemini run showed grounding reduced flagged errors 62.5 → 22.5 per 100 (directionally positive vs the earlier 4-task noise) — and `--verbose` revealed most flags are `verify-ai-output` file-path false-positives (e.g. "Node.js"), the next thing to harden before publishing a number.
+
+### Fixed
+- **Gemini default model (#343):** the ablation runner's default `gemini-2.0-flash` was retired by AI Studio (404 NOT_FOUND); the default is now the live `gemini-2.5-flash`. The `--model` flag selects any model.
+
+---
+
 ## [7.21.0] — 2026-06-18
 
 Minor release — LLM ablation runner gains a Gemini (AI Studio) provider.

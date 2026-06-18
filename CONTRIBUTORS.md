@@ -35,6 +35,9 @@ To ensure proper attribution:
 
 We welcome contributions! See [Contributing](./docs/CONTRIBUTING.md) for guidelines.
 
+### Recent Contributors (v7.22.0)
+- **@manojmallick** — feat: realistic §9 ablation — real-symbol corpus (`gen-ablation-corpus.mjs`), exact-signature grounding, `--verbose` flagged items; `scoreAnswerDetail` (#344, PR #345); fix: default Gemini model → gemini-2.5-flash (#343)
+
 ### Recent Contributors (v7.21.0)
 - **@manojmallick** — feat: Gemini (AI Studio) provider for the §9 LLM A/B ablation runner — auto-detected from GEMINI_API_KEY; `--provider`/`--model` flags (#340, PR #341)
 
