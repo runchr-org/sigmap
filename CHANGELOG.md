@@ -10,6 +10,15 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [7.22.2] — 2026-06-19
+
+Patch release — clears the two remaining `verify-ai-output` false-positive classes surfaced by the §9 ablation.
+
+### Fixed
+- **`verify-ai-output` no longer flags camelCase placeholders or documentation-placeholder imports (#350):** continuing from #347, the Hallucination Guard now also skips camelCase/Pascal placeholder filenames (`myExample.js`, `exampleConfig.ts`) via a case-boundary rule that still flags ordinary words (`resample.js`), and the `fake-import` detector skips obvious documentation placeholders (`@scope/utils`, `some-module`, `./local-file`, `./path/to/…`) while still flagging genuine missing packages and unresolved relative imports. In the §9 re-run after #347, grounding genuinely fixed 6 mis-path flags but the guard re-flagged 4 illustrative tokens (net +2); suppressing those exposes the true grounding signal (on those outputs, with-grounding flags drop 10 → 6, delta +2 → +9). The bundled `src/verify/parsers` and `src/verify/hallucination-guard` factories were regenerated for standalone-binary parity.
+
+---
+
 ## [7.22.1] — 2026-06-18
 
 Patch release — hardens the `verify-ai-output` file-path extractor against the dominant false-positive class.

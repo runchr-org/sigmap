@@ -35,6 +35,9 @@ To ensure proper attribution:
 
 We welcome contributions! See [Contributing](./docs/CONTRIBUTING.md) for guidelines.
 
+### Recent Contributors (v7.22.2)
+- **@manojmallick** — fix: clear the last two `verify-ai-output` false-positive classes — camelCase placeholders (`myExample.js`) and documentation-placeholder imports (`@scope/utils`, `some-module`, `./local-file`); ordinary words and genuine fakes still flag; exposes the true §9 grounding delta (#350, PR #351)
+
 ### Recent Contributors (v7.22.1)
 - **@manojmallick** — fix: harden `verify-ai-output` file-path extractor — skip runtime/library product names (`Node.js`, `Next.js`, …) and illustrative placeholders (`example.js`, `minimal-example.js`); genuine repo paths still flag; removes the dominant Hallucination Guard false-positive class (#347, PR #348)
 
