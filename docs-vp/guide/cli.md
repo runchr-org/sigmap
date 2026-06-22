@@ -1,13 +1,13 @@
 ---
 title: CLI reference
-description: Complete SigMap CLI reference. All commands and flags with examples — ask, evidence, squeeze, conventions, plan, bench, judge, verify-ai-output, verify-plan, review-pr, create, note, status, validate, roots, history, --package, --global, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more.
+description: Complete SigMap CLI reference. All commands and flags with examples — ask, evidence, squeeze, conventions, plan, bench, judge, verify-ai-output, verify-plan, review-pr, create, note, status, doctor, validate, roots, history, --package, --global, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more.
 head:
   - - meta
     - property: og:title
       content: "SigMap CLI Reference — every command and flag with examples"
   - - meta
     - property: og:description
-      content: "All 69 SigMap commands and flags documented with examples. ask, evidence, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, verify-plan, review-pr, create, note, status, validate, roots, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
+      content: "All 70 SigMap commands and flags documented with examples. ask, evidence, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, verify-plan, review-pr, create, note, status, doctor, validate, roots, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
   - - meta
     - property: og:url
       content: "https://sigmap.io/guide/cli"
@@ -19,7 +19,7 @@ head:
       content: "SigMap CLI Reference — every command and flag with examples"
   - - meta
     - name: twitter:description
-      content: "All 69 SigMap commands and flags documented with examples. ask, evidence, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, verify-plan, review-pr, create, note, status, validate, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
+      content: "All 70 SigMap commands and flags documented with examples. ask, evidence, gain, squeeze, conventions, scaffold, plan, bench, judge, verify-ai-output, verify-plan, review-pr, create, note, status, doctor, validate, history, --ci, --cost, --coverage, --watch, --diff, --mcp, --report, --health, weights --export/--import and more."
   - - meta
     - name: twitter:image:alt
       content: "SigMap CLI Reference"
@@ -88,6 +88,7 @@ If you are new to the product, start with the workflow pages first:
 | `history` | Show usage log + benchmark trend sparklines (hit@5, token reduction) |
 | `note "<text>"` | Append a note to the cross-session decision log (`note` alone lists recent) |
 | `status` | Repo state — branch, dirty files, index freshness, notes |
+| `doctor` | Diagnose config, index, freshness, coverage, and MCP wiring — with a fix per issue (`--json`; exits 1 on hard failure) |
 | `learn` | Boost, penalize, or reset learned file ranking weights |
 | `weights` | Show learned file multipliers or emit them as JSON |
 | `suggest-profile` | Auto-detect context profile from git state |
@@ -886,6 +887,37 @@ sigmap --coverage --adapter claude
 ```
 
 Equivalent to setting `testCoverage: true` in config, but applied only for the current run. Useful for PR reviews and one-off audits.
+
+---
+
+## doctor
+
+One-shot setup diagnostic. Runs seven resilient checks — git repository, config & source roots, the generated context file, the signature index, index freshness, coverage, and MCP wiring — and prints an **actionable fix** for anything that is wrong or stale. Use it the moment SigMap "isn't working" or an answer looks thin; it tells you exactly what to run next.
+
+```bash
+sigmap doctor
+```
+
+```text
+sigmap doctor
+
+✓ Git repository — recency boost + impact analysis enabled
+✓ Config & source roots — srcDirs: src, packages
+✓ Generated context — 1 file(s): .github/copilot-instructions.md
+✓ Signature index — 131 file(s) indexed
+⚠ Index freshness — 1 source file(s) changed since last generate
+    ↳ run: sigmap   (or: sigmap --watch to auto-refresh)
+✓ Coverage — 100% of source files in context (grade A)
+✓ MCP wiring — registered in .claude/settings.json
+
+0 error(s), 1 warning(s).
+```
+
+Each line is `✓` (ok), `⚠` (warning), or `✗` (hard failure); every non-ok line carries a `↳` fix. `--json` emits the full result (`{ checks, ok, errors, warnings }`) for tooling. The command **exits 1** when a hard check fails (no context file, or invalid `gen-context.config.json`) and **0** otherwise — drop it into CI as a setup gate.
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Emit the machine-readable result (`{ checks:[{id,label,status,detail,fix}], ok, errors, warnings }`) |
 
 ---
 

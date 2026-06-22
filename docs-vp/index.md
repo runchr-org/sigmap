@@ -78,12 +78,12 @@ features:
 
 <div style="max-width:840px;margin:0 auto;padding:18px 24px 0;text-align:center">
 <div style="display:inline-flex;flex-wrap:wrap;gap:.5rem;justify-content:center;background:var(--vp-c-brand-soft,#ede9fe);border:1px solid rgba(124,106,247,.25);border-radius:999px;padding:.55rem .9rem;font-size:.9rem;color:var(--vp-c-text-1)">
-  <span><strong>Release:</strong> v7.27.0</span>
+  <span><strong>Release:</strong> v7.28.0</span>
   <span>·</span>
-  <span>Two new <strong>MCP tools</strong> (v8.0 D3, 15→17): <code>get_diff_context</code> returns changed files with signatures + blast radius, and <code>get_architecture_overview</code> gives a one-call codebase map — module breakdown, hub files, and dependency cycles</span>
+  <span>New <code>sigmap doctor</code> (v8.0 E3): a one-shot setup diagnostic — config, context, index freshness, coverage, and MCP wiring — that prints an actionable fix for anything wrong, so a cold user reaches a useful answer fast (<code>--json</code>; CI-usable exit codes)</span>
 </div>
 <div style="margin-top:.4rem;display:inline-flex;flex-wrap:wrap;gap:.5rem;justify-content:center;background:var(--vp-c-default-soft,#f3f4f6);border:1px solid rgba(0,0,0,.08);border-radius:999px;padding:.55rem .9rem;font-size:.9rem;color:var(--vp-c-text-2)">
-  <span><strong>Benchmark:</strong> sigmap-v7.27-main</span>
+  <span><strong>Benchmark:</strong> sigmap-v7.28-main</span>
   <span>·</span>
   <span>76% hit@5 · 97.0% token reduction · 2026-06-22</span>
 </div>
@@ -176,7 +176,7 @@ See the full [end-to-end walkthrough](/guide/walkthrough) to watch this in actio
 | Overall token reduction | — | **97.0%** |
 | GPT-4o overflow repos | 16/21 | **0/21** |
 
-Latest saved benchmark run: **2026-06-22 (v7.27.0)**.
+Latest saved benchmark run: **2026-06-22 (v7.28.0)**.
 
 </div>
 

@@ -10,6 +10,16 @@ Format: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [7.28.0] — 2026-06-23
+
+Minor release — **v8.0 E3:** a one-shot setup doctor so a cold user reaches a useful answer fast.
+
+### Added
+- **`sigmap doctor` (#381):** a one-shot diagnostic that runs seven resilient checks — git repository, config & source roots, generated context file, signature index, index freshness, coverage, and MCP wiring — and prints an **actionable fix** for anything wrong (e.g. "run: npx sigmap", "run: sigmap --setup", "increase maxTokens or expand srcDirs"). `sigmap doctor --json` emits `{ checks, ok, errors, warnings }`; the command exits **1** on a hard failure (no context file / invalid config) and **0** otherwise, so it is usable in CI. Composed from `loadConfig`, `coverageScore`, `buildSigIndex`, and the known adapter-output / MCP-config paths — zero new runtime dependencies, no system-shell spawns.
+
+### Changed
+- **Release CI self-heals `develop` (#380):** the develop→main release PR's head branch is `develop`, which the repo's delete-branch-on-merge setting removes on every release; the "Sync develop with main" workflow now fetches `main` and recreates `develop` from it when the ref is missing (else merges `main` in), so `develop` no longer needs manual restoration after a release.
+
 ## [7.27.0] — 2026-06-22
 
 Minor release — **v8.0 D3:** two new MCP tools, taking the server from 15 to 17 tools. Both are composed from data SigMap already computes — zero new runtime dependencies, no system-shell spawns.
