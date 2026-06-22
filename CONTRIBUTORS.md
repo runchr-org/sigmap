@@ -35,6 +35,10 @@ To ensure proper attribution:
 
 We welcome contributions! See [Contributing](./docs/CONTRIBUTING.md) for guidelines.
 
+### Recent Contributors (v7.28.0)
+- **@manojmallick** — feat(doctor): add `sigmap doctor` (v8.0 E3) — one-shot setup diagnostic (config · context · index · freshness · coverage · MCP wiring) with actionable fixes; `--json`; CI-usable exit codes (#381, PR #382)
+- **@manojmallick** — ci(sync): self-heal `develop` when the release PR merge auto-deletes it (#380)
+
 ### Recent Contributors (v7.27.0)
 - **@manojmallick** — feat(mcp): add `get_diff_context` & `get_architecture_overview` MCP tools (v8.0 D3) — changed-file signatures + blast radius, and a one-call architecture map; MCP surface 15→17 (#376, PR #377)
 
