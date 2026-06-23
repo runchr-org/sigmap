@@ -98,7 +98,7 @@ Ask → Rank → Context → Validate → Judge → Learn
 
 <!--SM:benchmarkBlock-->
 ```
-Benchmark : sigmap-v7.29-main (21 repositories, including R language)
+Benchmark : sigmap-v7.30-main (21 repositories, including R language)
 Date      : 2026-06-23
 
 Hit@5          : 75.6%   (baseline 13.6%  — 5.6× lift)
